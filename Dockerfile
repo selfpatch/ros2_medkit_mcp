@@ -24,20 +24,17 @@ ENV ROS2_MEDKIT_BASE_URL=http://host.docker.internal:8080/api/v1 \
 # Expose port for HTTP transport
 EXPOSE 8765
 
-# Create entrypoint script
+# Create entrypoint script (HTTP is default)
 RUN echo '#!/bin/bash\n\
 if [ "$1" = "stdio" ]; then\n\
     shift\n\
     exec ros2-medkit-mcp-stdio "$@"\n\
 elif [ "$1" = "http" ]; then\n\
     shift\n\
-    exec ros2-medkit-mcp-http "$@"\n\
+    exec ros2-medkit-mcp-http --host 0.0.0.0 --port 8765 "$@"\n\
 else\n\
-    echo "Usage: docker run <image> [stdio|http] [options]"\n\
-    echo "  stdio - Run with stdio transport (for Claude Desktop)"\n\
-    echo "  http  - Run with HTTP transport (default: --host 0.0.0.0 --port 8765)"\n\
-    exit 1\n\
+    exec ros2-medkit-mcp-http --host 0.0.0.0 --port 8765 "$@"\n\
 fi' > /entrypoint.sh && chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["http", "--host", "0.0.0.0", "--port", "8765"]
+CMD []

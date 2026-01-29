@@ -1,7 +1,7 @@
 {
   "servers": {
-    "ros2-medkit-mcp-http": {
-      "type": "http",
+    "ros2-medkit-mcp": {
+      "type": "sse",
       "url": "http://localhost:8765/mcp",
       "headers": {}
     }

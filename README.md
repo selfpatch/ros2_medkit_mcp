@@ -88,11 +88,14 @@ See the [examples/](examples/) directory for ready-to-use MCP configuration file
 # Build image
 docker build -t ros2-medkit-mcp .
 
-# Run with stdio
+# Run HTTP server (default)
+docker run -p 8765:8765 ros2-medkit-mcp
+
+# Run with stdio transport
 docker run -i ros2-medkit-mcp stdio
 
-# Run with HTTP
-docker run -p 8765:8765 ros2-medkit-mcp http --host 0.0.0.0 --port 8765
+# With custom gateway URL
+docker run -p 8765:8765 -e ROS2_MEDKIT_BASE_URL=http://host.docker.internal:8080/api/v1 ros2-medkit-mcp
 ```
 
 Using docker-compose:
@@ -100,6 +103,47 @@ Using docker-compose:
 ```bash
 docker-compose up
 ```
+
+#### Using Docker Image as MCP Server in VS Code
+
+To use the Docker image as an MCP server in VS Code with the GitHub Copilot extension:
+
+1. **Start the MCP server container:**
+
+   ```bash
+   docker run -d --name ros2-medkit-mcp -p 8765:8765 \
+     -e ROS2_MEDKIT_BASE_URL=http://host.docker.internal:8080/api/v1 \
+     ghcr.io/selfpatch/ros2_medkit_mcp:latest
+   ```
+
+2. **Configure VS Code MCP settings** (`.vscode/mcp.json` or user settings):
+
+   ```json
+   {
+     "servers": {
+       "ros2_medkit": {
+         "type": "sse",
+         "url": "http://localhost:8765/mcp",
+         "headers": {}
+       }
+     }
+   }
+   ```
+
+3. **Verify the connection** by checking the health endpoint:
+
+   ```bash
+   curl http://localhost:8765/health
+   ```
+
+   Expected response:
+   ```json
+   {"status": "healthy", "service": "ros2_medkit_mcp", "sovd_url": "http://host.docker.internal:8080/api/v1"}
+   ```
+
+4. **Use with Copilot Chat** - the MCP tools will be available for querying ROS 2 system state via SOVD API.
+
+> **Note:** Use `host.docker.internal` to connect from the container to services running on your host machine (like ros2_medkit gateway).
 
 ## MCP Tools
 
