@@ -28,24 +28,32 @@ class EntityGetArgs(BaseModel):
 
 
 class FaultsListArgs(BaseModel):
-    """Arguments for listing component faults."""
+    """Arguments for listing entity faults."""
 
-    component_id: str = Field(
+    entity_id: str = Field(
         ...,
-        description="The component identifier",
+        description="The entity identifier",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
     )
 
 
 class FaultGetArgs(BaseModel):
     """Arguments for getting or clearing a specific fault."""
 
-    component_id: str = Field(
+    entity_id: str = Field(
         ...,
-        description="The component identifier",
+        description="The entity identifier",
     )
     fault_id: str = Field(
         ...,
         description="The fault identifier (fault code)",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
     )
 
 
@@ -58,8 +66,17 @@ class AreaComponentsArgs(BaseModel):
     )
 
 
-class ComponentDataArgs(BaseModel):
-    """Arguments for getting component data."""
+class AreaIdArgs(BaseModel):
+    """Arguments for area-specific operations."""
+
+    area_id: str = Field(
+        ...,
+        description="The area identifier",
+    )
+
+
+class ComponentIdArgs(BaseModel):
+    """Arguments for component-specific operations."""
 
     component_id: str = Field(
         ...,
@@ -67,25 +84,42 @@ class ComponentDataArgs(BaseModel):
     )
 
 
-class ComponentTopicDataArgs(BaseModel):
-    """Arguments for getting specific topic data from a component."""
+class EntityDataArgs(BaseModel):
+    """Arguments for getting entity data."""
 
-    component_id: str = Field(
+    entity_id: str = Field(
         ...,
-        description="The component identifier",
+        description="The entity identifier",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
+class EntityTopicDataArgs(BaseModel):
+    """Arguments for getting specific topic data from an entity."""
+
+    entity_id: str = Field(
+        ...,
+        description="The entity identifier",
     )
     topic_name: str = Field(
         ...,
         description="The topic name (e.g., 'temperature', 'rpm')",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
     )
 
 
 class PublishTopicArgs(BaseModel):
     """Arguments for publishing data to a topic."""
 
-    component_id: str = Field(
+    entity_id: str = Field(
         ...,
-        description="The component identifier",
+        description="The entity identifier",
     )
     topic_name: str = Field(
         ...,
@@ -95,14 +129,22 @@ class PublishTopicArgs(BaseModel):
         ...,
         description="The message data to publish as JSON object",
     )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
 
 
 class ListOperationsArgs(BaseModel):
-    """Arguments for listing component operations."""
+    """Arguments for listing entity operations."""
 
-    component_id: str = Field(
+    entity_id: str = Field(
         ...,
-        description="The component identifier",
+        description="The entity identifier",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
     )
 
 
@@ -161,6 +203,31 @@ class ExecutionArgs(BaseModel):
     execution_id: str = Field(
         ...,
         description="The execution identifier",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
+class UpdateExecutionArgs(BaseModel):
+    """Arguments for updating an execution."""
+
+    entity_id: str = Field(
+        ...,
+        description="The entity identifier",
+    )
+    operation_name: str = Field(
+        ...,
+        description="The operation name",
+    )
+    execution_id: str = Field(
+        ...,
+        description="The execution identifier",
+    )
+    update_data: dict[str, Any] = Field(
+        ...,
+        description="Update data (e.g., {'stop': true} to stop execution)",
     )
     entity_type: str = Field(
         default="components",
@@ -301,33 +368,41 @@ class DependenciesArgs(BaseModel):
 
 
 class ListConfigurationsArgs(BaseModel):
-    """Arguments for listing component configurations."""
+    """Arguments for listing entity configurations."""
 
-    component_id: str = Field(
+    entity_id: str = Field(
         ...,
-        description="The component identifier",
+        description="The entity identifier",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
     )
 
 
 class GetConfigurationArgs(BaseModel):
     """Arguments for getting a specific configuration."""
 
-    component_id: str = Field(
+    entity_id: str = Field(
         ...,
-        description="The component identifier",
+        description="The entity identifier",
     )
     param_name: str = Field(
         ...,
         description="The parameter name",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
     )
 
 
 class SetConfigurationArgs(BaseModel):
     """Arguments for setting a configuration value."""
 
-    component_id: str = Field(
+    entity_id: str = Field(
         ...,
-        description="The component identifier",
+        description="The entity identifier",
     )
     param_name: str = Field(
         ...,
@@ -336,6 +411,10 @@ class SetConfigurationArgs(BaseModel):
     value: Any = Field(
         ...,
         description="The new parameter value",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
     )
 
 
