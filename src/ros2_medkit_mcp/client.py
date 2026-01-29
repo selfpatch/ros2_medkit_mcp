@@ -183,6 +183,14 @@ class SovdClient:
         """
         return await self._request("GET", "/version-info")
 
+    async def get_health(self) -> dict[str, Any]:
+        """Get health status of the gateway.
+
+        Returns:
+            Health status as dictionary.
+        """
+        return await self._request("GET", "/health")
+
     async def list_entities(self) -> list[dict[str, Any]]:
         """List all SOVD entities (areas, components, apps, and functions combined).
 
@@ -258,6 +266,18 @@ class SovdClient:
             return result["areas"]
         return [result] if result else []
 
+    async def get_area(self, area_id: str) -> dict[str, Any]:
+        """Get details of a specific area.
+
+        Args:
+            area_id: The area identifier.
+
+        Returns:
+            Area data dictionary.
+        """
+        result = await self._request("GET", f"/areas/{area_id}")
+        return result.get("item", result) if isinstance(result, dict) else result
+
     async def list_components(self) -> list[dict[str, Any]]:
         """List all SOVD components.
 
@@ -273,6 +293,18 @@ class SovdClient:
             if "items" in result:
                 return result["items"]
         return [result] if result else []
+
+    async def get_component(self, component_id: str) -> dict[str, Any]:
+        """Get details of a specific component.
+
+        Args:
+            component_id: The component identifier.
+
+        Returns:
+            Component data dictionary.
+        """
+        result = await self._request("GET", f"/components/{component_id}")
+        return result.get("item", result) if isinstance(result, dict) else result
 
     async def list_apps(self) -> list[dict[str, Any]]:
         """List all SOVD apps (ROS 2 nodes).

@@ -17,13 +17,15 @@ from ros2_medkit_mcp.models import (
     AppIdArgs,
     AreaComponentsArgs,
     AreaContainsArgs,
+    AreaIdArgs,
     ClearAllFaultsArgs,
-    ComponentDataArgs,
     ComponentHostsArgs,
-    ComponentTopicDataArgs,
+    ComponentIdArgs,
     CreateExecutionArgs,
     EntitiesListArgs,
+    EntityDataArgs,
     EntityGetArgs,
+    EntityTopicDataArgs,
     ExecutionArgs,
     FaultGetArgs,
     FaultsListArgs,
@@ -40,6 +42,7 @@ from ros2_medkit_mcp.models import (
     SubcomponentsArgs,
     SystemFaultSnapshotsArgs,
     ToolResult,
+    UpdateExecutionArgs,
     filter_entities,
 )
 
@@ -108,10 +111,13 @@ def format_error(error: str) -> list[TextContent]:
 TOOL_ALIASES: dict[str, str] = {
     "sovd.version": "sovd_version",
     "sovd_version": "sovd_version",
+    "sovd_health": "sovd_health",
     "sovd.entities.list": "sovd_entities_list",
     "sovd_entities_list": "sovd_entities_list",
     "sovd_areas_list": "sovd_areas_list",
+    "sovd_area_get": "sovd_area_get",
     "sovd_components_list": "sovd_components_list",
+    "sovd_component_get": "sovd_component_get",
     "sovd.entities.get": "sovd_entities_get",
     "sovd_entities_get": "sovd_entities_get",
     "sovd.faults.list": "sovd_faults_list",
@@ -133,9 +139,9 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_component_subcomponents": "sovd_component_subcomponents",
     "sovd_component_hosts": "sovd_component_hosts",
     "sovd_component_dependencies": "sovd_component_dependencies",
-    # Component data
-    "sovd_component_data": "sovd_component_data",
-    "sovd_component_topic_data": "sovd_component_topic_data",
+    # Entity data (entity-agnostic)
+    "sovd_entity_data": "sovd_entity_data",
+    "sovd_entity_topic_data": "sovd_entity_topic_data",
     "sovd_publish_topic": "sovd_publish_topic",
     # Operations - executions model
     "sovd_list_operations": "sovd_list_operations",
@@ -143,6 +149,7 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_create_execution": "sovd_create_execution",
     "sovd_list_executions": "sovd_list_executions",
     "sovd_get_execution": "sovd_get_execution",
+    "sovd_update_execution": "sovd_update_execution",
     "sovd_cancel_execution": "sovd_cancel_execution",
     # Configurations
     "sovd_list_configurations": "sovd_list_configurations",
@@ -181,6 +188,15 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 },
             ),
             Tool(
+                name="sovd_health",
+                description="Get health status of the SOVD gateway. Returns service status.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            ),
+            Tool(
                 name="sovd_entities_list",
                 description="List all SOVD entities (areas and components combined) with optional substring filtering. This is the primary discovery tool - use it first to explore what's available in the system before querying specific components.",
                 inputSchema={
@@ -204,12 +220,40 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 },
             ),
             Tool(
+                name="sovd_area_get",
+                description="Get detailed information about a specific area including its capabilities.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "area_id": {
+                            "type": "string",
+                            "description": "The area identifier",
+                        },
+                    },
+                    "required": ["area_id"],
+                },
+            ),
+            Tool(
                 name="sovd_components_list",
-                description="List all SOVD components (ROS 2 nodes) across all areas. Returns component IDs that can be used with other tools like sovd_faults_list, sovd_component_data, etc.",
+                description="List all SOVD components (ROS 2 nodes) across all areas. Returns component IDs that can be used with other tools like sovd_faults_list, sovd_entity_data, etc.",
                 inputSchema={
                     "type": "object",
                     "properties": {},
                     "required": [],
+                },
+            ),
+            Tool(
+                name="sovd_component_get",
+                description="Get detailed information about a specific component including its capabilities.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "component_id": {
+                            "type": "string",
+                            "description": "The component identifier",
+                        },
+                    },
+                    "required": ["component_id"],
                 },
             ),
             Tool(
@@ -226,54 +270,70 @@ def register_tools(server: Server, client: SovdClient) -> None:
                     "required": ["entity_id"],
                 },
             ),
+            # ==================== Faults ====================
             Tool(
                 name="sovd_faults_list",
-                description="List all faults for a specific component. IMPORTANT: First use sovd_components_list or sovd_area_components to discover valid component IDs. Component ID must match exactly (e.g., 'lidar_sensor', 'temp_sensor').",
+                description="List all faults for a specific entity. IMPORTANT: First use sovd_components_list or sovd_area_components to discover valid entity IDs.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The component identifier (use sovd_components_list to discover valid IDs)",
+                            "description": "The entity identifier (use sovd_entities_list to discover valid IDs)",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
                         },
                     },
-                    "required": ["component_id"],
+                    "required": ["entity_id"],
                 },
             ),
             Tool(
                 name="sovd_faults_get",
-                description="Get a specific fault by its code from a component. First use sovd_faults_list to discover available faults for the component.",
+                description="Get a specific fault by its code from an entity. First use sovd_faults_list to discover available faults.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The component identifier",
+                            "description": "The entity identifier",
                         },
                         "fault_id": {
                             "type": "string",
                             "description": "The fault identifier (fault code)",
                         },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
                     },
-                    "required": ["component_id", "fault_id"],
+                    "required": ["entity_id", "fault_id"],
                 },
             ),
             Tool(
                 name="sovd_faults_clear",
-                description="Clear (acknowledge/dismiss) a fault from a component. Use sovd_faults_list first to see active faults.",
+                description="Clear (acknowledge/dismiss) a fault from an entity. Use sovd_faults_list first to see active faults.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The component identifier",
+                            "description": "The entity identifier",
                         },
                         "fault_id": {
                             "type": "string",
                             "description": "The fault identifier to clear",
                         },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
                     },
-                    "required": ["component_id", "fault_id"],
+                    "required": ["entity_id", "fault_id"],
                 },
             ),
             Tool(
@@ -502,48 +562,58 @@ def register_tools(server: Server, client: SovdClient) -> None:
                     "required": ["component_id"],
                 },
             ),
-            # ==================== Component Data ====================
+            # ==================== Entity Data ====================
             Tool(
-                name="sovd_component_data",
-                description="Read all topic data from a component (returns all topics with their current values). Use sovd_components_list first to discover valid component IDs.",
+                name="sovd_entity_data",
+                description="Read all topic data from an entity (returns all topics with their current values). Works with components, apps, areas, and functions.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The component identifier (use sovd_components_list to discover valid IDs)",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
                         },
                     },
-                    "required": ["component_id"],
+                    "required": ["entity_id"],
                 },
             ),
             Tool(
-                name="sovd_component_topic_data",
-                description="Read data from a specific topic within a component. Use sovd_component_data first to discover available topics for the component.",
+                name="sovd_entity_topic_data",
+                description="Read data from a specific topic within an entity. Use sovd_entity_data first to discover available topics.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The component identifier",
+                            "description": "The entity identifier",
                         },
                         "topic_name": {
                             "type": "string",
-                            "description": "The topic name (use sovd_component_data to discover available topics)",
+                            "description": "The topic name (use sovd_entity_data to discover available topics)",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
                         },
                     },
-                    "required": ["component_id", "topic_name"],
+                    "required": ["entity_id", "topic_name"],
                 },
             ),
             Tool(
                 name="sovd_publish_topic",
-                description="Publish data to a component's topic. Use sovd_component_data first to verify the topic exists and check its message format.",
+                description="Publish data to an entity's topic. Use sovd_entity_data first to verify the topic exists and check its message format.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The component identifier",
+                            "description": "The entity identifier",
                         },
                         "topic_name": {
                             "type": "string",
@@ -553,23 +623,33 @@ def register_tools(server: Server, client: SovdClient) -> None:
                             "type": "object",
                             "description": "The message data to publish as JSON object",
                         },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
                     },
-                    "required": ["component_id", "topic_name", "data"],
+                    "required": ["entity_id", "topic_name", "data"],
                 },
             ),
             # ==================== Operations (Services & Actions) ====================
             Tool(
                 name="sovd_list_operations",
-                description="List all operations (ROS 2 services and actions) available for an entity. Use sovd_components_list or sovd_apps_list first to discover valid entity IDs.",
+                description="List all operations (ROS 2 services and actions) available for an entity. Works with components, apps, areas, and functions.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The entity identifier (use sovd_components_list to discover valid IDs)",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
                         },
                     },
-                    "required": ["component_id"],
+                    "required": ["entity_id"],
                 },
             ),
             Tool(
@@ -673,6 +753,37 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 },
             ),
             Tool(
+                name="sovd_update_execution",
+                description="Update an execution (e.g., stop capability). Use to control running actions.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "operation_name": {
+                            "type": "string",
+                            "description": "The operation name",
+                        },
+                        "execution_id": {
+                            "type": "string",
+                            "description": "The execution identifier",
+                        },
+                        "update_data": {
+                            "type": "object",
+                            "description": "Update data (e.g., {'stop': true} to stop execution)",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "operation_name", "execution_id", "update_data"],
+                },
+            ),
+            Tool(
                 name="sovd_cancel_execution",
                 description="Cancel a specific execution by its ID. Use sovd_list_executions to find the execution_id.",
                 inputSchema={
@@ -702,34 +813,44 @@ def register_tools(server: Server, client: SovdClient) -> None:
             # ==================== Configurations (ROS 2 Parameters) ====================
             Tool(
                 name="sovd_list_configurations",
-                description="List all configurations (ROS 2 parameters) for a component. Use sovd_components_list first to discover valid component IDs.",
+                description="List all configurations (ROS 2 parameters) for an entity. Works with components, apps, areas, and functions.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The component identifier (use sovd_components_list to discover valid IDs)",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
                         },
                     },
-                    "required": ["component_id"],
+                    "required": ["entity_id"],
                 },
             ),
             Tool(
                 name="sovd_get_configuration",
-                description="Get a specific configuration (parameter) value. Use sovd_list_configurations first to discover available parameters for the component.",
+                description="Get a specific configuration (parameter) value. Use sovd_list_configurations first to discover available parameters.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The component identifier",
+                            "description": "The entity identifier",
                         },
                         "param_name": {
                             "type": "string",
                             "description": "The parameter name (use sovd_list_configurations to discover available parameters)",
                         },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
                     },
-                    "required": ["component_id", "param_name"],
+                    "required": ["entity_id", "param_name"],
                 },
             ),
             Tool(
@@ -738,9 +859,9 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The component identifier",
+                            "description": "The entity identifier",
                         },
                         "param_name": {
                             "type": "string",
@@ -749,8 +870,13 @@ def register_tools(server: Server, client: SovdClient) -> None:
                         "value": {
                             "description": "The new parameter value (can be string, number, boolean, or array)",
                         },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
                     },
-                    "required": ["component_id", "param_name", "value"],
+                    "required": ["entity_id", "param_name", "value"],
                 },
             ),
             Tool(
@@ -759,30 +885,40 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The component identifier",
+                            "description": "The entity identifier",
                         },
                         "param_name": {
                             "type": "string",
                             "description": "The parameter name to reset",
                         },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
                     },
-                    "required": ["component_id", "param_name"],
+                    "required": ["entity_id", "param_name"],
                 },
             ),
             Tool(
                 name="sovd_delete_all_configurations",
-                description="Reset all configurations (parameters) for a component to their default values. WARNING: This affects all parameters - use with caution.",
+                description="Reset all configurations (parameters) for an entity to their default values. WARNING: This affects all parameters - use with caution.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "component_id": {
+                        "entity_id": {
                             "type": "string",
-                            "description": "The component identifier",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
                         },
                     },
-                    "required": ["component_id"],
+                    "required": ["entity_id"],
                 },
             ),
         ]
@@ -813,13 +949,27 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 filtered = filter_entities(entities, args.filter)
                 return format_json_response(filtered)
 
+            elif normalized_name == "sovd_health":
+                result = await client.get_health()
+                return format_json_response(result)
+
             elif normalized_name == "sovd_areas_list":
                 areas = await client.list_areas()
                 return format_json_response(areas)
 
+            elif normalized_name == "sovd_area_get":
+                args = AreaIdArgs(**arguments)
+                area = await client.get_area(args.area_id)
+                return format_json_response(area)
+
             elif normalized_name == "sovd_components_list":
                 components = await client.list_components()
                 return format_json_response(components)
+
+            elif normalized_name == "sovd_component_get":
+                args = ComponentIdArgs(**arguments)
+                component = await client.get_component(args.component_id)
+                return format_json_response(component)
 
             elif normalized_name == "sovd_entities_get":
                 args = EntityGetArgs(**arguments)
@@ -828,17 +978,17 @@ def register_tools(server: Server, client: SovdClient) -> None:
 
             elif normalized_name == "sovd_faults_list":
                 args = FaultsListArgs(**arguments)
-                faults = await client.list_faults(args.component_id)
+                faults = await client.list_faults(args.entity_id, args.entity_type)
                 return format_json_response(faults)
 
             elif normalized_name == "sovd_faults_get":
                 args = FaultGetArgs(**arguments)
-                fault = await client.get_fault(args.component_id, args.fault_id)
+                fault = await client.get_fault(args.entity_id, args.fault_id, args.entity_type)
                 return format_json_response(fault)
 
             elif normalized_name == "sovd_faults_clear":
                 args = FaultGetArgs(**arguments)
-                result = await client.clear_fault(args.component_id, args.fault_id)
+                result = await client.clear_fault(args.entity_id, args.fault_id, args.entity_type)
                 return format_json_response(result)
 
             elif normalized_name == "sovd_area_components":
@@ -928,22 +1078,24 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 snapshots = await client.get_system_fault_snapshots(args.fault_code)
                 return format_json_response(snapshots)
 
-            # ==================== Component Data ====================
+            # ==================== Entity Data ====================
 
-            elif normalized_name == "sovd_component_data":
-                args = ComponentDataArgs(**arguments)
-                data = await client.get_component_data(args.component_id)
+            elif normalized_name == "sovd_entity_data":
+                args = EntityDataArgs(**arguments)
+                data = await client.get_component_data(args.entity_id, args.entity_type)
                 return format_json_response(data)
 
-            elif normalized_name == "sovd_component_topic_data":
-                args = ComponentTopicDataArgs(**arguments)
-                data = await client.get_component_topic_data(args.component_id, args.topic_name)
+            elif normalized_name == "sovd_entity_topic_data":
+                args = EntityTopicDataArgs(**arguments)
+                data = await client.get_component_topic_data(
+                    args.entity_id, args.topic_name, args.entity_type
+                )
                 return format_json_response(data)
 
             elif normalized_name == "sovd_publish_topic":
                 args = PublishTopicArgs(**arguments)
                 result = await client.publish_to_topic(
-                    args.component_id, args.topic_name, args.data
+                    args.entity_id, args.topic_name, args.data, args.entity_type
                 )
                 return format_json_response(result)
 
@@ -951,7 +1103,7 @@ def register_tools(server: Server, client: SovdClient) -> None:
 
             elif normalized_name == "sovd_list_operations":
                 args = ListOperationsArgs(**arguments)
-                operations = await client.list_operations(args.component_id)
+                operations = await client.list_operations(args.entity_id, args.entity_type)
                 return format_json_response(operations)
 
             elif normalized_name == "sovd_get_operation":
@@ -988,6 +1140,17 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 )
                 return format_json_response(execution)
 
+            elif normalized_name == "sovd_update_execution":
+                args = UpdateExecutionArgs(**arguments)
+                result = await client.update_execution(
+                    args.entity_id,
+                    args.operation_name,
+                    args.execution_id,
+                    args.request_data,
+                    args.entity_type,
+                )
+                return format_json_response(result)
+
             elif normalized_name == "sovd_cancel_execution":
                 args = ExecutionArgs(**arguments)
                 result = await client.cancel_execution(
@@ -1002,29 +1165,33 @@ def register_tools(server: Server, client: SovdClient) -> None:
 
             elif normalized_name == "sovd_list_configurations":
                 args = ListConfigurationsArgs(**arguments)
-                configs = await client.list_configurations(args.component_id)
+                configs = await client.list_configurations(args.entity_id, args.entity_type)
                 return format_json_response(configs)
 
             elif normalized_name == "sovd_get_configuration":
                 args = GetConfigurationArgs(**arguments)
-                config = await client.get_configuration(args.component_id, args.param_name)
+                config = await client.get_configuration(
+                    args.entity_id, args.param_name, args.entity_type
+                )
                 return format_json_response(config)
 
             elif normalized_name == "sovd_set_configuration":
                 args = SetConfigurationArgs(**arguments)
                 result = await client.set_configuration(
-                    args.component_id, args.param_name, args.value
+                    args.entity_id, args.param_name, args.value, args.entity_type
                 )
                 return format_json_response(result)
 
             elif normalized_name == "sovd_delete_configuration":
                 args = GetConfigurationArgs(**arguments)
-                result = await client.delete_configuration(args.component_id, args.param_name)
+                result = await client.delete_configuration(
+                    args.entity_id, args.param_name, args.entity_type
+                )
                 return format_json_response(result)
 
             elif normalized_name == "sovd_delete_all_configurations":
                 args = ListConfigurationsArgs(**arguments)
-                result = await client.delete_all_configurations(args.component_id)
+                result = await client.delete_all_configurations(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
             else:
