@@ -20,17 +20,29 @@ This is the recommended mode for Claude Desktop and VS Code.
 
 ## HTTP Transport (`mcp-http.json`)
 
-Use this configuration when connecting to a remote MCP server running in HTTP mode.
+Use this configuration when connecting to an MCP server running in HTTP mode (local or Docker).
 
-**Setup:**
+**Setup with Docker (recommended):**
+
+1. Start the MCP server container:
+   ```bash
+   docker run -d --name ros2-medkit-mcp -p 8765:8765 \
+     -e ROS2_MEDKIT_BASE_URL=http://host.docker.internal:8080/api/v1 \
+     ghcr.io/selfpatch/ros2_medkit_mcp:latest
+   ```
+
+2. Copy `mcp-http.json` to your VS Code workspace as `.vscode/mcp.json`
+
+3. Verify connection:
+   ```bash
+   curl http://localhost:8765/health
+   ```
+
+**Setup with Poetry:**
 
 1. Start the HTTP server:
    ```bash
    poetry run ros2-medkit-mcp-http --host 0.0.0.0 --port 8765
-   ```
-   Or with Docker:
-   ```bash
-   docker-compose up
    ```
 
 2. Copy `mcp-http.json` to your VS Code workspace as `.vscode/mcp.json`
