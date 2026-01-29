@@ -14,6 +14,7 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
+from starlette.types import Receive, Scope, Send
 
 from ros2_medkit_mcp.client import SovdClient
 from ros2_medkit_mcp.config import get_settings
@@ -41,20 +42,18 @@ def create_app() -> Starlette:
     # Create SSE transport
     sse_transport = SseServerTransport("/mcp/messages/")
 
-    async def handle_sse(request: Request) -> None:
-        """Handle SSE connections for MCP."""
-        async with sse_transport.connect_sse(
-            request.scope, request.receive, request._send
-        ) as streams:
+    async def handle_sse(scope: Scope, receive: Receive, send: Send) -> None:
+        """Handle SSE connections for MCP as an ASGI endpoint."""
+        async with sse_transport.connect_sse(scope, receive, send) as streams:
             await mcp_server.run(
                 streams[0],
                 streams[1],
                 mcp_server.create_initialization_options(),
             )
 
-    async def handle_messages(request: Request) -> None:
-        """Handle incoming MCP messages via POST."""
-        await sse_transport.handle_post_message(request.scope, request.receive, request._send)
+    async def handle_messages(scope: Scope, receive: Receive, send: Send) -> None:
+        """Handle incoming MCP messages via POST as an ASGI endpoint."""
+        await sse_transport.handle_post_message(scope, receive, send)
 
     async def health_check(_request: Request) -> JSONResponse:
         """Health check endpoint.
