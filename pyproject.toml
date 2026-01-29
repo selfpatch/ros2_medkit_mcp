@@ -1,0 +1,35 @@
+[tool.poetry]
+name = "ros2-medkit-mcp"
+version = "0.1.0"
+description = "MCP server adapter for ros2_medkit SOVD HTTP API"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+license = "MIT"
+packages = [{ include = "ros2_medkit_mcp", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+mcp = "^1.9.0"
+httpx = "^0.28.0"
+pydantic = "^2.10.0"
+uvicorn = { version = "^0.34.0", extras = ["standard"] }
+starlette = "^0.45.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.25.0"
+respx = "^0.22.0"
+
+[tool.poetry.scripts]
+ros2-medkit-mcp-stdio = "ros2_medkit_mcp.server_stdio:main"
+ros2-medkit-mcp-http = "ros2_medkit_mcp.server_http:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-p no:launch_testing -p no:launch_testing_ros -p no:ament_copyright -p no:ament_flake8 -p no:ament_pep257 -p no:ament_xmllint -p no:ament_lint"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
