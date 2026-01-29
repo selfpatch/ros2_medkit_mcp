@@ -164,13 +164,6 @@ class SovdClient:
                     request_id=request_id,
                 ) from e
 
-        except httpx.HTTPStatusError as e:
-            request_id = self._extract_request_id(e.response)
-            raise SovdClientError(
-                message=f"HTTP error: {e}",
-                status_code=e.response.status_code,
-                request_id=request_id,
-            ) from e
         except httpx.RequestError as e:
             logger.error("HTTP request error: %s", e)
             raise SovdClientError(message=f"Request failed: {e}") from e

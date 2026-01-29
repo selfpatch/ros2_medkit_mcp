@@ -22,6 +22,7 @@ from ros2_medkit_mcp.models import (
     ComponentHostsArgs,
     ComponentIdArgs,
     CreateExecutionArgs,
+    DependenciesArgs,
     EntitiesListArgs,
     EntityDataArgs,
     EntityGetArgs,
@@ -1051,7 +1052,7 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 return format_json_response(hosts)
 
             elif normalized_name == "sovd_component_dependencies":
-                args = SubcomponentsArgs(**arguments)
+                args = DependenciesArgs(**arguments)
                 deps = await client.list_component_dependencies(args.component_id)
                 return format_json_response(deps)
 

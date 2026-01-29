@@ -8,19 +8,19 @@ import os
 from pydantic import BaseModel, Field
 
 
+def _default_timeout() -> float:
+    """Parse timeout from environment, falling back to 30s on empty values."""
+    raw = os.getenv("ROS2_MEDKIT_TIMEOUT_S")
+    if raw is None or raw.strip() == "":
+        return 30.0
+    try:
+        return float(raw)
+    except ValueError as exc:  # Preserve clear error for invalid input
+        raise ValueError("ROS2_MEDKIT_TIMEOUT_S must be numeric") from exc
+
+
 class Settings(BaseModel):
     """Application settings loaded from environment variables."""
-
-    @staticmethod
-    def _default_timeout() -> float:
-        """Parse timeout from environment, falling back to 30s on empty values."""
-        raw = os.getenv("ROS2_MEDKIT_TIMEOUT_S")
-        if raw is None or raw.strip() == "":
-            return 30.0
-        try:
-            return float(raw)
-        except ValueError as exc:  # Preserve clear error for invalid input
-            raise ValueError("ROS2_MEDKIT_TIMEOUT_S must be numeric") from exc
 
     base_url: str = Field(
         default_factory=lambda: os.getenv("ROS2_MEDKIT_BASE_URL", "http://localhost:8080"),
