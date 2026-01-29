@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "ros2-medkit-mcp-stdio": {
+      "type": "stdio",
+      "command": "poetry",
+      "args": ["run", "ros2-medkit-mcp-stdio"],
+      "cwd": "/path/to/ros2_medkit_mcp",
+      "env": {
+        "ROS2_MEDKIT_BASE_URL": "http://localhost:8080/api/v1",
+        "ROS2_MEDKIT_BEARER_TOKEN": "",
+        "ROS2_MEDKIT_TIMEOUT_S": "30"
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "ros2-medkit-mcp-http": {
+      "type": "http",
+      "url": "http://localhost:8765/mcp",
+      "headers": {}
+    }
+  }
+}

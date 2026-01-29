@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  ros2-medkit-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ros2-medkit-mcp
+    ports:
+      - "8765:8765"
+    environment:
+      # Point to ros2_medkit gateway
+      # Use host.docker.internal for macOS/Windows Docker Desktop
+      # Use 172.17.0.1 for Linux Docker
+      - ROS2_MEDKIT_BASE_URL=${ROS2_MEDKIT_BASE_URL:-http://host.docker.internal:8080/api/v1}
+      - ROS2_MEDKIT_BEARER_TOKEN=${ROS2_MEDKIT_BEARER_TOKEN:-}
+      - ROS2_MEDKIT_TIMEOUT_S=${ROS2_MEDKIT_TIMEOUT_S:-30}
+    # Run HTTP server by default
+    command: ["http", "--host", "0.0.0.0", "--port", "8765"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
