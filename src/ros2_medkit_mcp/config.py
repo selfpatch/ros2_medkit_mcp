@@ -4,7 +4,6 @@ Loads settings from environment variables with sensible defaults.
 """
 
 import os
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -24,12 +23,10 @@ class Settings(BaseModel):
             raise ValueError("ROS2_MEDKIT_TIMEOUT_S must be numeric") from exc
 
     base_url: str = Field(
-        default_factory=lambda: os.getenv(
-            "ROS2_MEDKIT_BASE_URL", "http://localhost:8080"
-        ),
+        default_factory=lambda: os.getenv("ROS2_MEDKIT_BASE_URL", "http://localhost:8080"),
         description="Base URL of the ros2_medkit SOVD API",
     )
-    bearer_token: Optional[str] = Field(
+    bearer_token: str | None = Field(
         default_factory=lambda: os.getenv("ROS2_MEDKIT_BEARER_TOKEN"),
         description="Optional Bearer token for authentication",
     )

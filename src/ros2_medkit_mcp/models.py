@@ -4,7 +4,7 @@ These models are intentionally permissive to handle varying API responses.
 They validate input arguments while allowing flexible output from the API.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 class EntitiesListArgs(BaseModel):
     """Arguments for sovd.entities.list tool."""
 
-    filter: Optional[str] = Field(
+    filter: str | None = Field(
         default=None,
         description="Optional substring filter to match against entity id and name",
     )
@@ -120,7 +120,7 @@ class CreateExecutionArgs(BaseModel):
         ...,
         description="The operation name (service or action)",
     )
-    request_data: Optional[dict[str, Any]] = Field(
+    request_data: dict[str, Any] | None = Field(
         default=None,
         description="Optional request data (goal for actions, request for services)",
     )
@@ -350,7 +350,7 @@ class ToolResult(BaseModel):
         default=None,
         description="The result data from the tool",
     )
-    error: Optional[str] = Field(
+    error: str | None = Field(
         default=None,
         description="Error message if success is False",
     )
@@ -381,7 +381,7 @@ class ToolResult(BaseModel):
 
 
 def filter_entities(
-    entities: list[dict[str, Any]], filter_text: Optional[str]
+    entities: list[dict[str, Any]], filter_text: str | None
 ) -> list[dict[str, Any]]:
     """Filter entities by substring match on id and name fields.
 

@@ -3,6 +3,7 @@
 import httpx
 import pytest
 import respx
+from pydantic import ValidationError
 
 from ros2_medkit_mcp.client import SovdClient, SovdClientError
 from ros2_medkit_mcp.config import Settings
@@ -216,9 +217,9 @@ class TestSovdClient:
     async def test_list_faults_different_component(self, client: SovdClient) -> None:
         """Test faults listing for different component."""
         expected = [{"id": "fault-1", "severity": "high"}]
-        respx.get(
-            "http://test-sovd:8080/api/v1/components/other-component/faults"
-        ).mock(return_value=httpx.Response(200, json=expected))
+        respx.get("http://test-sovd:8080/api/v1/components/other-component/faults").mock(
+            return_value=httpx.Response(200, json=expected)
+        )
 
         result = await client.list_faults("other-component")
 
@@ -400,7 +401,7 @@ class TestConfigSettings:
         """Test that settings are immutable."""
         settings = Settings()
 
-        with pytest.raises(Exception):  # ValidationError for frozen model
+        with pytest.raises(ValidationError):
             settings.base_url = "http://new-url:8080"
 
     def test_timeout_empty_env_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
