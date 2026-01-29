@@ -27,4 +27,8 @@ def pytest_configure(config):
             if plugin:
                 plugin_manager.unregister(plugin)
         except Exception:
+            # Intentionally ignore all errors when attempting to unregister optional
+            # ROS 2 launch-related pytest plugins. Failing here could break test
+            # collection entirely in environments where these plugins are missing
+            # or behave unexpectedly, which is worse than leaving them registered.
             pass

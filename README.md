@@ -39,7 +39,7 @@ The server is configured via environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ROS2_MEDKIT_BASE_URL` | `http://localhost:8080/api/v1` | Base URL of the ros2_medkit SOVD API (include `/api/v1`) |
+| `ROS2_MEDKIT_BASE_URL` | `http://localhost:8080` | Base URL of the ros2_medkit SOVD API |
 | `ROS2_MEDKIT_BEARER_TOKEN` | *(none)* | Optional Bearer token for authentication |
 | `ROS2_MEDKIT_TIMEOUT_S` | `30` | HTTP request timeout in seconds |
 
@@ -156,12 +156,12 @@ Get the SOVD API version information.
 **Returns:** JSON version object from `GET /version-info`
 
 #### `sovd_entities_list`
-List all SOVD entities (areas and components) with optional filtering.
+List all SOVD entities (areas, components, apps, and functions) with optional filtering.
 
 **Arguments:**
 - `filter` (optional, string): Substring filter applied to entity `id` and `name` fields
 
-**Returns:** Combined array of areas from `GET /areas` and components from `GET /components`
+**Returns:** Combined array of areas from `GET /areas`, components from `GET /components`, apps from `GET /apps`, and functions from `GET /functions` (when those endpoints are available)
 
 #### `sovd_entities_get`
 Get a specific entity by ID with live data if available.
@@ -244,44 +244,48 @@ List all operations (services and actions) available for a component.
 
 **Returns:** Array of operations from `GET /components/{component_id}/operations`
 
-#### `sovd_call_operation`
+#### `sovd_create_execution`
 Call a ROS 2 service or send an action goal.
 
 **Arguments:**
-- `component_id` (required, string): The component identifier
+- `entity_id` (required, string): The entity identifier
 - `operation_name` (required, string): The operation name (service or action)
 - `request_data` (optional, object): Request data (parameters for actions/services)
+- `entity_type` (optional, string): Entity type - 'components', 'apps', 'areas', or 'functions' (default: 'components')
 
-**Returns:** Response from `POST /components/{component_id}/operations/{operation_name}/executions`
+**Returns:** Response from `POST /{entity_type}/{entity_id}/operations/{operation_name}/executions`
 
-#### `sovd_operation_status`
+#### `sovd_get_execution`
 Get the current status of a running action execution.
 
 **Arguments:**
-- `component_id` (required, string): The component identifier
+- `entity_id` (required, string): The entity identifier
 - `operation_name` (required, string): The action name
 - `execution_id` (required, string): The execution ID (goal_id)
+- `entity_type` (optional, string): Entity type (default: 'components')
 
-**Returns:** Status from `GET /components/{component_id}/operations/{operation_name}/executions/{execution_id}`
+**Returns:** Status from `GET /{entity_type}/{entity_id}/operations/{operation_name}/executions/{execution_id}`
 
 #### `sovd_list_executions`
 List all executions for an operation.
 
 **Arguments:**
-- `component_id` (required, string): The component identifier
+- `entity_id` (required, string): The entity identifier
 - `operation_name` (required, string): The action name
+- `entity_type` (optional, string): Entity type (default: 'components')
 
-**Returns:** List from `GET /components/{component_id}/operations/{operation_name}/executions`
+**Returns:** List from `GET /{entity_type}/{entity_id}/operations/{operation_name}/executions`
 
-#### `sovd_cancel_operation`
+#### `sovd_cancel_execution`
 Cancel a running action execution.
 
 **Arguments:**
-- `component_id` (required, string): The component identifier
+- `entity_id` (required, string): The entity identifier
 - `operation_name` (required, string): The action name
 - `execution_id` (required, string): The execution ID (goal_id)
+- `entity_type` (optional, string): Entity type (default: 'components')
 
-**Returns:** Response from `DELETE /components/{component_id}/operations/{operation_name}/executions/{execution_id}`
+**Returns:** Response from `DELETE /{entity_type}/{entity_id}/operations/{operation_name}/executions/{execution_id}`
 
 ### Configuration Tools (ROS 2 Parameters)
 
