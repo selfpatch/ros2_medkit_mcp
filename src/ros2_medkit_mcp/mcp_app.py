@@ -26,8 +26,8 @@ from ros2_medkit_mcp.models import (
     EntityGetArgs,
     ExecutionArgs,
     FaultGetArgs,
-    FaultSnapshotsArgs,
     FaultsListArgs,
+    FaultSnapshotsArgs,
     FunctionIdArgs,
     GetConfigurationArgs,
     GetOperationArgs,
@@ -913,9 +913,7 @@ def register_tools(server: Server, client: SovdClient) -> None:
 
             elif normalized_name == "sovd_clear_all_faults":
                 args = ClearAllFaultsArgs(**arguments)
-                result = await client.clear_all_faults(
-                    args.entity_id, args.entity_type
-                )
+                result = await client.clear_all_faults(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
             elif normalized_name == "sovd_fault_snapshots":
@@ -939,9 +937,7 @@ def register_tools(server: Server, client: SovdClient) -> None:
 
             elif normalized_name == "sovd_component_topic_data":
                 args = ComponentTopicDataArgs(**arguments)
-                data = await client.get_component_topic_data(
-                    args.component_id, args.topic_name
-                )
+                data = await client.get_component_topic_data(args.component_id, args.topic_name)
                 return format_json_response(data)
 
             elif normalized_name == "sovd_publish_topic":
@@ -1011,9 +1007,7 @@ def register_tools(server: Server, client: SovdClient) -> None:
 
             elif normalized_name == "sovd_get_configuration":
                 args = GetConfigurationArgs(**arguments)
-                config = await client.get_configuration(
-                    args.component_id, args.param_name
-                )
+                config = await client.get_configuration(args.component_id, args.param_name)
                 return format_json_response(config)
 
             elif normalized_name == "sovd_set_configuration":
@@ -1025,9 +1019,7 @@ def register_tools(server: Server, client: SovdClient) -> None:
 
             elif normalized_name == "sovd_delete_configuration":
                 args = GetConfigurationArgs(**arguments)
-                result = await client.delete_configuration(
-                    args.component_id, args.param_name
-                )
+                result = await client.delete_configuration(args.component_id, args.param_name)
                 return format_json_response(result)
 
             elif normalized_name == "sovd_delete_all_configurations":

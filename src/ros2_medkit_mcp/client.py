@@ -5,8 +5,9 @@ authentication, and error handling.
 """
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Optional
+from typing import Any
 
 import httpx
 
@@ -21,8 +22,8 @@ class SovdClientError(Exception):
     def __init__(
         self,
         message: str,
-        status_code: Optional[int] = None,
-        request_id: Optional[str] = None,
+        status_code: int | None = None,
+        request_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -43,7 +44,7 @@ class SovdClient:
             settings: Application settings containing base URL, auth, timeout.
         """
         self._settings = settings
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     def _build_headers(self) -> dict[str, str]:
         """Build HTTP headers including authentication if configured.
@@ -79,7 +80,7 @@ class SovdClient:
             await self._client.aclose()
             self._client = None
 
-    def _extract_request_id(self, response: httpx.Response) -> Optional[str]:
+    def _extract_request_id(self, response: httpx.Response) -> str | None:
         """Extract request ID from response headers.
 
         Args:
@@ -98,7 +99,7 @@ class SovdClient:
         method: str,
         path: str,
         response: httpx.Response,
-        request_id: Optional[str],
+        request_id: str | None,
     ) -> None:
         """Log HTTP response details.
 
@@ -121,8 +122,8 @@ class SovdClient:
         self,
         method: str,
         path: str,
-        params: Optional[dict[str, Any]] = None,
-        json_body: Optional[dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
     ) -> Any:
         """Make an HTTP request and return JSON response.
 
@@ -398,9 +399,7 @@ class SovdClient:
                 fqn = found_entity.get("fqn", "").lstrip("/")
                 if fqn:
                     # Try to get component data - might need to use area path
-                    component_data = await self._request(
-                        "GET", f"/components/{entity_id}/data"
-                    )
+                    component_data = await self._request("GET", f"/components/{entity_id}/data")
                     return {**found_entity, "data": component_data}
             except SovdClientError:
                 pass  # Component doesn't expose data endpoint
@@ -443,9 +442,7 @@ class SovdClient:
         Returns:
             Fault data dictionary.
         """
-        return await self._request(
-            "GET", f"/{entity_type}/{entity_id}/faults/{fault_id}"
-        )
+        return await self._request("GET", f"/{entity_type}/{entity_id}/faults/{fault_id}")
 
     async def clear_fault(
         self, entity_id: str, fault_id: str, entity_type: str = "components"
@@ -460,9 +457,7 @@ class SovdClient:
         Returns:
             Response dictionary with clear status.
         """
-        return await self._request(
-            "DELETE", f"/{entity_type}/{entity_id}/faults/{fault_id}"
-        )
+        return await self._request("DELETE", f"/{entity_type}/{entity_id}/faults/{fault_id}")
 
     async def clear_all_faults(
         self, entity_id: str, entity_type: str = "components"
@@ -574,9 +569,7 @@ class SovdClient:
 
     # ==================== Component Relationships ====================
 
-    async def list_component_subcomponents(
-        self, component_id: str
-    ) -> list[dict[str, Any]]:
+    async def list_component_subcomponents(self, component_id: str) -> list[dict[str, Any]]:
         """List subcomponents of a component.
 
         Args:
@@ -608,9 +601,7 @@ class SovdClient:
             return result["items"]
         return [result] if result else []
 
-    async def list_component_dependencies(
-        self, component_id: str
-    ) -> list[dict[str, Any]]:
+    async def list_component_dependencies(self, component_id: str) -> list[dict[str, Any]]:
         """List dependencies of a component.
 
         Args:
@@ -660,9 +651,7 @@ class SovdClient:
         Returns:
             Topic data dictionary.
         """
-        return await self._request(
-            "GET", f"/{entity_type}/{entity_id}/data/{topic_name}"
-        )
+        return await self._request("GET", f"/{entity_type}/{entity_id}/data/{topic_name}")
 
     async def publish_to_topic(
         self,
@@ -720,15 +709,13 @@ class SovdClient:
         Returns:
             Operation details dictionary.
         """
-        return await self._request(
-            "GET", f"/{entity_type}/{entity_id}/operations/{operation_name}"
-        )
+        return await self._request("GET", f"/{entity_type}/{entity_id}/operations/{operation_name}")
 
     async def create_execution(
         self,
         entity_id: str,
         operation_name: str,
-        request_data: Optional[dict[str, Any]] = None,
+        request_data: dict[str, Any] | None = None,
         entity_type: str = "components",
     ) -> dict[str, Any]:
         """Start an execution for an operation (service call or action goal).
@@ -859,9 +846,7 @@ class SovdClient:
         Returns:
             List of configuration dictionaries.
         """
-        result = await self._request(
-            "GET", f"/{entity_type}/{entity_id}/configurations"
-        )
+        result = await self._request("GET", f"/{entity_type}/{entity_id}/configurations")
         if isinstance(result, list):
             return result
         if isinstance(result, dict):
@@ -884,9 +869,7 @@ class SovdClient:
         Returns:
             Configuration value dictionary.
         """
-        return await self._request(
-            "GET", f"/{entity_type}/{entity_id}/configurations/{param_name}"
-        )
+        return await self._request("GET", f"/{entity_type}/{entity_id}/configurations/{param_name}")
 
     async def set_configuration(
         self, entity_id: str, param_name: str, value: Any, entity_type: str = "components"
@@ -937,9 +920,7 @@ class SovdClient:
         Returns:
             Response dictionary.
         """
-        return await self._request(
-            "DELETE", f"/{entity_type}/{entity_id}/configurations"
-        )
+        return await self._request("DELETE", f"/{entity_type}/{entity_id}/configurations")
 
 
 @asynccontextmanager

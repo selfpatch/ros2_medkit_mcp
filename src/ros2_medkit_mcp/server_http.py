@@ -41,7 +41,7 @@ def create_app() -> Starlette:
     # Create SSE transport
     sse_transport = SseServerTransport("/mcp/messages/")
 
-    async def handle_sse(request: Request):
+    async def handle_sse(request: Request) -> None:
         """Handle SSE connections for MCP."""
         async with sse_transport.connect_sse(
             request.scope, request.receive, request._send
@@ -52,17 +52,12 @@ def create_app() -> Starlette:
                 mcp_server.create_initialization_options(),
             )
 
-    async def handle_messages(request: Request):
+    async def handle_messages(request: Request) -> None:
         """Handle incoming MCP messages via POST."""
-        await sse_transport.handle_post_message(
-            request.scope, request.receive, request._send
-        )
+        await sse_transport.handle_post_message(request.scope, request.receive, request._send)
 
-    async def health_check(request: Request) -> JSONResponse:
+    async def health_check(_request: Request) -> JSONResponse:
         """Health check endpoint.
-
-        Args:
-            request: The incoming request.
 
         Returns:
             JSON response with status.
@@ -106,9 +101,7 @@ def parse_args() -> argparse.Namespace:
     Returns:
         Parsed arguments namespace.
     """
-    parser = argparse.ArgumentParser(
-        description="ros2_medkit MCP server with HTTP transport"
-    )
+    parser = argparse.ArgumentParser(description="ros2_medkit MCP server with HTTP transport")
     parser.add_argument(
         "--host",
         type=str,

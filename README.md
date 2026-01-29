@@ -337,6 +337,16 @@ Returns information about the OpenAPI specification location.
 
 ## Development
 
+### Setup
+
+```bash
+# Install dependencies including dev tools
+poetry install
+
+# Install pre-commit hooks
+poetry run pre-commit install
+```
+
 ### Running Tests
 
 ```bash
@@ -347,10 +357,16 @@ poetry run python run_tests.py -v
 poetry run pytest -v
 ```
 
-### Type Checking
+### Code Quality
 
 ```bash
-poetry run mypy src/
+# Run all pre-commit hooks
+poetry run pre-commit run --all-files
+
+# Or run individually:
+poetry run ruff check src/ tests/     # Linting
+poetry run ruff format src/ tests/    # Formatting
+poetry run mypy src/                   # Type checking
 ```
 
 ## License
