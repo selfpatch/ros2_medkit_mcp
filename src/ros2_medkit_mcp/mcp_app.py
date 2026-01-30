@@ -1053,7 +1053,7 @@ def register_tools(server: Server, client: SovdClient) -> None:
 
             elif normalized_name == "sovd_component_dependencies":
                 args = DependenciesArgs(**arguments)
-                deps = await client.list_component_dependencies(args.component_id)
+                deps = await client.list_component_dependencies(args.entity_id)
                 return format_json_response(deps)
 
             # ==================== Extended Faults ====================

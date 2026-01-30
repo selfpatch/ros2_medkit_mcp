@@ -2,7 +2,7 @@
 name = "ros2-medkit-mcp"
 version = "0.1.0"
 description = "MCP server adapter for ros2_medkit SOVD HTTP API"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["bburda <bartoszburda93@gmail.com>"]
 readme = "README.md"
 license = "MIT"
 packages = [{ include = "ros2_medkit_mcp", from = "src" }]

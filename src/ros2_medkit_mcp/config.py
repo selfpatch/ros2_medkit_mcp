@@ -23,7 +23,7 @@ class Settings(BaseModel):
     """Application settings loaded from environment variables."""
 
     base_url: str = Field(
-        default_factory=lambda: os.getenv("ROS2_MEDKIT_BASE_URL", "http://localhost:8080"),
+        default_factory=lambda: os.getenv("ROS2_MEDKIT_BASE_URL", "http://localhost:8080/api/v1"),
         description="Base URL of the ros2_medkit SOVD API",
     )
     bearer_token: str | None = Field(
