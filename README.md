@@ -39,7 +39,7 @@ The server is configured via environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ROS2_MEDKIT_BASE_URL` | `http://localhost:8080` | Base URL of the ros2_medkit SOVD API |
+| `ROS2_MEDKIT_BASE_URL` | `http://localhost:8080/api/v1` | Base URL of the ros2_medkit SOVD API |
 | `ROS2_MEDKIT_BEARER_TOKEN` | *(none)* | Optional Bearer token for authentication |
 | `ROS2_MEDKIT_TIMEOUT_S` | `30` | HTTP request timeout in seconds |
 
@@ -205,24 +205,26 @@ List all components within a specific area.
 
 **Returns:** Array of component objects from `GET /areas/{area_id}/components`
 
-### Component Data Tools
+### Entity Data Tools
 
-#### `sovd_component_data`
-Read all topic data from a component.
-
-**Arguments:**
-- `component_id` (required, string): The component identifier
-
-**Returns:** Array of topic data from `GET /components/{component_id}/data`
-
-#### `sovd_component_topic_data`
-Read data from a specific topic within a component.
+#### `sovd_entity_data`
+Read all topic data from an entity (component or app).
 
 **Arguments:**
-- `component_id` (required, string): The component identifier
+- `entity_id` (required, string): The entity identifier
+- `entity_type` (optional, string): Entity type - 'components' or 'apps' (default: 'components')
+
+**Returns:** Array of topic data from `GET /{entity_type}/{entity_id}/data`
+
+#### `sovd_entity_topic_data`
+Read data from a specific topic within an entity.
+
+**Arguments:**
+- `entity_id` (required, string): The entity identifier
 - `topic_name` (required, string): The topic name (e.g., 'temperature', 'rpm')
+- `entity_type` (optional, string): Entity type - 'components' or 'apps' (default: 'components')
 
-**Returns:** Topic data from `GET /components/{component_id}/data/{topic_name}`
+**Returns:** Topic data from `GET /{entity_type}/{entity_id}/data/{topic_name}`
 
 #### `sovd_publish_topic`
 Publish data to a component's topic.

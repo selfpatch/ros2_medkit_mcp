@@ -381,7 +381,7 @@ class TestConfigSettings:
         """Test default settings values."""
         settings = Settings()
 
-        assert settings.base_url == "http://localhost:8080"
+        assert settings.base_url == "http://localhost:8080/api/v1"
         assert settings.bearer_token is None
         assert settings.timeout_seconds == 30.0
 
