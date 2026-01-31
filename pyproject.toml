@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "MCP server adapter for ros2_medkit SOVD HTTP API"
 authors = ["bburda <bartoszburda93@gmail.com>"]
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 packages = [{ include = "ros2_medkit_mcp", from = "src" }]
 
 [tool.poetry.dependencies]
