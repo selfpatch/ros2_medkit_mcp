@@ -1,5 +1,11 @@
 # ros2_medkit_mcp
 
+[![CI](https://github.com/selfpatch/ros2_medkit_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/selfpatch/ros2_medkit_mcp/actions/workflows/ci.yml)
+[![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fselfpatch%2Fros2__medkit__mcp-blue?logo=github)](https://github.com/selfpatch/ros2_medkit_mcp/pkgs/container/ros2_medkit_mcp)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://selfpatch.github.io/ros2_medkit/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Us-7289DA?logo=discord&logoColor=white)](https://discord.gg/fEbWKTah)
+
 A thin MCP (Model Context Protocol) adapter that connects an LLM to an existing SOVD HTTP API exposed by [ros2_medkit](https://github.com/selfpatch/ros2_medkit).
 
 ## Overview
