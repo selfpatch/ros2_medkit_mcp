@@ -12,9 +12,8 @@ import uvicorn
 from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse
-from starlette.routing import Route
-from starlette.types import Receive, Scope, Send
+from starlette.responses import JSONResponse, Response
+from starlette.routing import Mount, Route
 
 from ros2_medkit_mcp.client import SovdClient
 from ros2_medkit_mcp.config import get_settings
@@ -39,21 +38,30 @@ def create_app() -> Starlette:
     client = SovdClient(settings)
     setup_mcp_app(mcp_server, settings, client)
 
-    # Create SSE transport
+    # Create SSE transport - path is where clients POST messages
     sse_transport = SseServerTransport("/mcp/messages/")
 
-    async def handle_sse(scope: Scope, receive: Receive, send: Send) -> None:
-        """Handle SSE connections for MCP as an ASGI endpoint."""
-        async with sse_transport.connect_sse(scope, receive, send) as streams:
-            await mcp_server.run(
-                streams[0],
-                streams[1],
-                mcp_server.create_initialization_options(),
-            )
+    async def handle_sse(request: Request) -> Response:
+        """Handle SSE connections for MCP.
 
-    async def handle_messages(scope: Scope, receive: Receive, send: Send) -> None:
-        """Handle incoming MCP messages via POST as an ASGI endpoint."""
-        await sse_transport.handle_post_message(scope, receive, send)
+        Note: We use request._send (private attribute) because the MCP SDK requires
+        direct access to the ASGI send callable. This is the documented approach
+        in mcp/server/sse.py - there is no public Starlette API alternative.
+
+        Must return Response() to avoid NoneType error on disconnect.
+        """
+        try:
+            async with sse_transport.connect_sse(
+                request.scope, request.receive, request._send
+            ) as streams:
+                await mcp_server.run(
+                    streams[0],
+                    streams[1],
+                    mcp_server.create_initialization_options(),
+                )
+        except Exception:
+            logger.exception("Unhandled exception in SSE handler")
+        return Response()
 
     async def health_check(_request: Request) -> JSONResponse:
         """Health check endpoint.
@@ -80,12 +88,13 @@ def create_app() -> Starlette:
         logger.info("Server shutdown complete")
 
     # Build the Starlette app
+    # SSE endpoint uses Route with Request, messages uses Mount with ASGI handler
     app = Starlette(
         debug=False,
         routes=[
             Route("/health", health_check, methods=["GET"]),
             Route("/mcp", handle_sse, methods=["GET"]),
-            Route("/mcp/messages/", handle_messages, methods=["POST"]),
+            Mount("/mcp/messages/", app=sse_transport.handle_post_message),
         ],
         on_startup=[on_startup],
         on_shutdown=[on_shutdown],
