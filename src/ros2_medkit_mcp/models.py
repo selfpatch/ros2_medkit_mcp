@@ -4,6 +4,7 @@ These models are intentionally permissive to handle varying API responses.
 They validate input arguments while allowing flexible output from the API.
 """
 
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -416,6 +417,228 @@ class SetConfigurationArgs(BaseModel):
         default="components",
         description="Entity type: 'components', 'apps', 'areas', or 'functions'",
     )
+
+
+# ==================== Fault Response Models ====================
+
+
+class FaultStatus(str, Enum):
+    """Fault status values per SOVD specification."""
+
+    PENDING = "PENDING"
+    ACTIVE = "ACTIVE"
+    CLEARED = "CLEARED"
+    INACTIVE = "INACTIVE"
+
+
+class FaultItem(BaseModel):
+    """Fault item model per SOVD specification."""
+
+    code: str = Field(..., description="Fault code (DTC)")
+    fault_name: str | None = Field(
+        default=None,
+        alias="faultName",
+        description="Human-readable fault name",
+    )
+    severity: str | None = Field(
+        default=None,
+        description="Fault severity (e.g., 'critical', 'warning', 'info')",
+    )
+    status: FaultStatus | None = Field(
+        default=None,
+        description="Current fault status",
+    )
+    is_confirmed: bool | None = Field(
+        default=None,
+        alias="isConfirmed",
+        description="Whether the fault is confirmed",
+    )
+    is_current: bool | None = Field(
+        default=None,
+        alias="isCurrent",
+        description="Whether the fault is currently active",
+    )
+    is_test_failed: bool | None = Field(
+        default=None,
+        alias="isTestFailed",
+        description="Whether the related test failed",
+    )
+    counter: int | None = Field(
+        default=None,
+        description="Occurrence counter",
+    )
+    aging_counter: int | None = Field(
+        default=None,
+        alias="agingCounter",
+        description="Aging counter for fault maturation",
+    )
+    first_occurrence: str | None = Field(
+        default=None,
+        alias="firstOccurrence",
+        description="ISO 8601 timestamp of first occurrence",
+    )
+    last_occurrence: str | None = Field(
+        default=None,
+        alias="lastOccurrence",
+        description="ISO 8601 timestamp of last occurrence",
+    )
+    healing_cycles: int | None = Field(
+        default=None,
+        alias="healingCycles",
+        description="Number of healing cycles",
+    )
+    x_medkit: dict[str, Any] | None = Field(
+        default=None,
+        alias="x-medkit",
+        description="ROS 2 MedKit specific extensions",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class FreezeFrameSnapshot(BaseModel):
+    """Freeze frame snapshot with captured diagnostic data."""
+
+    snapshot_id: str = Field(
+        ...,
+        alias="snapshotId",
+        description="Unique identifier for the snapshot",
+    )
+    timestamp: str = Field(
+        ...,
+        description="ISO 8601 timestamp when snapshot was captured",
+    )
+    data_source: str | None = Field(
+        default=None,
+        alias="dataSource",
+        description="Source of the snapshot data (e.g., topic name)",
+    )
+    data: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Captured diagnostic data",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class BulkDataDescriptor(BaseModel):
+    """Descriptor for bulk data (rosbag) with download URI."""
+
+    id: str = Field(..., description="Bulk data identifier")
+    category: str | None = Field(
+        default=None,
+        description="Data category (e.g., 'rosbag', 'snapshot')",
+    )
+    bulk_data_uri: str = Field(
+        ...,
+        alias="bulkDataUri",
+        description="URI to download the bulk data file",
+    )
+    file_size: int | None = Field(
+        default=None,
+        alias="fileSize",
+        description="File size in bytes",
+    )
+    is_available: bool = Field(
+        default=True,
+        alias="isAvailable",
+        description="Whether the file is available for download",
+    )
+    timestamp: str | None = Field(
+        default=None,
+        description="ISO 8601 timestamp when the data was captured",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class RosbagSnapshot(BaseModel):
+    """Rosbag snapshot with bulk data download URI."""
+
+    snapshot_id: str = Field(
+        ...,
+        alias="snapshotId",
+        description="Unique identifier for the snapshot",
+    )
+    timestamp: str = Field(
+        ...,
+        description="ISO 8601 timestamp when snapshot was captured",
+    )
+    bulk_data_uri: str = Field(
+        ...,
+        alias="bulkDataUri",
+        description="URI to download the rosbag file",
+    )
+    file_size: int | None = Field(
+        default=None,
+        alias="fileSize",
+        description="File size in bytes",
+    )
+    is_available: bool = Field(
+        default=True,
+        alias="isAvailable",
+        description="Whether the rosbag file is available for download",
+    )
+    data_source: str | None = Field(
+        default=None,
+        alias="dataSource",
+        description="Source description for the snapshot",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class ExtendedDataRecords(BaseModel):
+    """Extended data records containing diagnostic snapshots."""
+
+    freeze_frame_snapshots: list[FreezeFrameSnapshot] = Field(
+        default_factory=list,
+        alias="freezeFrameSnapshots",
+        description="List of freeze frame snapshots with captured data",
+    )
+    rosbag_snapshots: list[RosbagSnapshot] = Field(
+        default_factory=list,
+        alias="rosbagSnapshots",
+        description="List of rosbag snapshots with download URIs",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class EnvironmentData(BaseModel):
+    """Environment data captured at fault occurrence."""
+
+    extended_data_records: ExtendedDataRecords | None = Field(
+        default=None,
+        alias="extendedDataRecords",
+        description="Snapshot data including freeze frames and rosbags",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class FaultResponse(BaseModel):
+    """Complete fault response with item and environment data."""
+
+    item: FaultItem = Field(..., description="The fault item details")
+    environment_data: EnvironmentData | None = Field(
+        default=None,
+        alias="environmentData",
+        description="Environment data captured at fault occurrence",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class FaultListResponse(BaseModel):
+    """Response containing a list of fault items."""
+
+    items: list[FaultItem] = Field(
+        default_factory=list,
+        description="List of fault items",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
 
 
 class ToolResult(BaseModel):
