@@ -641,6 +641,132 @@ class FaultListResponse(BaseModel):
     model_config = {"populate_by_name": True, "extra": "allow"}
 
 
+# ==================== Bulk Data Response Models ====================
+
+
+class BulkDataItem(BaseModel):
+    """Item in a bulk-data category listing."""
+
+    id: str = Field(..., description="Unique identifier for the bulk data item")
+    name: str | None = Field(
+        default=None,
+        description="Human-readable name for the item",
+    )
+    mimetype: str = Field(
+        default="application/octet-stream",
+        description="MIME type of the data (e.g., 'application/x-mcap')",
+    )
+    size: int | None = Field(
+        default=None,
+        description="File size in bytes",
+    )
+    creation_date: str | None = Field(
+        default=None,
+        alias="creationDate",
+        description="ISO 8601 timestamp when the data was created",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class BulkDataCategoryResponse(BaseModel):
+    """Response listing available bulk-data categories."""
+
+    items: list[str] = Field(
+        default_factory=list,
+        description="List of available category names (e.g., 'rosbags', 'logs')",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class BulkDataListResponse(BaseModel):
+    """Response listing items in a bulk-data category."""
+
+    items: list[BulkDataItem] = Field(
+        default_factory=list,
+        description="List of bulk data items in the category",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+# ==================== Bulk Data Argument Models ====================
+
+
+class BulkDataCategoriesArgs(BaseModel):
+    """Arguments for listing bulk-data categories."""
+
+    entity_id: str = Field(
+        ...,
+        description="The entity identifier",
+    )
+    entity_type: str = Field(
+        default="apps",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
+class BulkDataListArgs(BaseModel):
+    """Arguments for listing bulk-data items in a category."""
+
+    entity_id: str = Field(
+        ...,
+        description="The entity identifier",
+    )
+    category: str = Field(
+        ...,
+        description="Category name (e.g., 'rosbags')",
+    )
+    entity_type: str = Field(
+        default="apps",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
+class BulkDataInfoArgs(BaseModel):
+    """Arguments for getting bulk-data item info."""
+
+    bulk_data_uri: str = Field(
+        ...,
+        description="Full bulk-data URI path (e.g., '/apps/motor/bulk-data/rosbags/uuid')",
+    )
+
+
+class BulkDataDownloadArgs(BaseModel):
+    """Arguments for downloading a bulk-data item."""
+
+    bulk_data_uri: str = Field(
+        ...,
+        description="Full bulk-data URI path (e.g., '/apps/motor/bulk-data/rosbags/uuid')",
+    )
+    output_dir: str = Field(
+        default="/tmp",
+        description="Directory to save the downloaded file",
+    )
+
+
+class BulkDataDownloadForFaultArgs(BaseModel):
+    """Arguments for downloading all rosbags for a fault."""
+
+    entity_id: str = Field(
+        ...,
+        description="The entity identifier",
+    )
+    fault_code: str = Field(
+        ...,
+        description="The fault code",
+    )
+    entity_type: str = Field(
+        default="apps",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+    output_dir: str = Field(
+        default="/tmp",
+        description="Directory to save the downloaded files",
+    )
+
+
 class ToolResult(BaseModel):
     """Standard result wrapper for tool responses."""
 

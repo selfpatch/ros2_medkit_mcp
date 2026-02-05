@@ -6,6 +6,7 @@ intended to be reused by both stdio and HTTP transport entrypoints.
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from mcp.server import Server
@@ -18,6 +19,12 @@ from ros2_medkit_mcp.models import (
     AreaComponentsArgs,
     AreaContainsArgs,
     AreaIdArgs,
+    BulkDataCategoriesArgs,
+    BulkDataDownloadArgs,
+    BulkDataDownloadForFaultArgs,
+    BulkDataInfoArgs,
+    BulkDataItem,
+    BulkDataListArgs,
     ClearAllFaultsArgs,
     ComponentHostsArgs,
     ComponentIdArgs,
@@ -308,6 +315,242 @@ def format_snapshots_response(snapshots_data: dict[str, Any]) -> list[TextConten
     return [TextContent(type="text", text="\n".join(lines))]
 
 
+# ==================== Bulk Data Formatting ====================
+
+
+def format_bulkdata_categories(categories: list[str], entity_id: str) -> list[TextContent]:
+    """Format bulk-data categories for LLM readability.
+
+    Args:
+        categories: List of category names.
+        entity_id: Entity identifier for context.
+
+    Returns:
+        Formatted TextContent list.
+    """
+    if not categories:
+        return [TextContent(type="text", text=f"No bulk-data categories available for {entity_id}")]
+
+    lines = [f"Bulk-data categories for {entity_id}:"]
+    for cat in categories:
+        lines.append(f"  - {cat}")
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+def format_bulkdata_list(
+    items: list[dict[str, Any]], entity_id: str, category: str
+) -> list[TextContent]:
+    """Format bulk-data items list for LLM readability.
+
+    Args:
+        items: List of bulk-data item dictionaries.
+        entity_id: Entity identifier for context.
+        category: Category name.
+
+    Returns:
+        Formatted TextContent list.
+    """
+    if not items:
+        return [TextContent(type="text", text=f"No {category} available for {entity_id}")]
+
+    lines = [f"Bulk-data items in {entity_id}/{category} ({len(items)} total):"]
+
+    for item_dict in items:
+        try:
+            item = BulkDataItem.model_validate(item_dict)
+            name = item.name or item.id
+
+            size_str = ""
+            if item.size:
+                size_mb = item.size / (1024 * 1024)
+                size_str = f", {size_mb:.2f} MB"
+
+            date_str = ""
+            if item.creation_date:
+                # Just show the date portion
+                date_str = f", created {item.creation_date[:10]}"
+
+            lines.append(f"  [{item.id}] {name} ({item.mimetype}{size_str}{date_str})")
+        except Exception:
+            # Fallback formatting
+            item_id = item_dict.get("id", "unknown")
+            name = item_dict.get("name", item_id)
+            lines.append(f"  [{item_id}] {name}")
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+def format_bulkdata_info(info: dict[str, Any]) -> list[TextContent]:
+    """Format bulk-data info for LLM readability.
+
+    Args:
+        info: Dictionary with content_type, content_length, filename, uri.
+
+    Returns:
+        Formatted TextContent list.
+    """
+    lines = [f"Bulk-data info for: {info.get('uri', 'unknown')}"]
+
+    if info.get("filename"):
+        lines.append(f"  Filename: {info['filename']}")
+
+    lines.append(f"  Content-Type: {info.get('content_type', 'unknown')}")
+
+    if info.get("content_length"):
+        size_bytes = int(info["content_length"])
+        size_mb = size_bytes / (1024 * 1024)
+        lines.append(f"  Size: {size_mb:.2f} MB ({size_bytes} bytes)")
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+def save_bulk_data_file(
+    content: bytes, filename: str | None, bulk_data_uri: str, output_dir: str
+) -> list[TextContent]:
+    """Save bulk-data content to a file.
+
+    Args:
+        content: File content bytes.
+        filename: Filename from Content-Disposition header.
+        bulk_data_uri: Original URI for fallback filename.
+        output_dir: Output directory path.
+
+    Returns:
+        Formatted TextContent list with download result.
+    """
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # Generate filename if not provided
+    if not filename:
+        # Extract from URI (last path component)
+        uri_parts = bulk_data_uri.strip("/").split("/")
+        filename = uri_parts[-1] if uri_parts else "download"
+        # Add extension if missing
+        if "." not in filename:
+            filename += ".mcap"
+
+    file_path = output_path / filename
+    file_path.write_bytes(content)
+
+    size_mb = len(content) / (1024 * 1024)
+    lines = [
+        "Downloaded successfully!",
+        f"  File: {file_path}",
+        f"  Size: {size_mb:.2f} MB ({len(content)} bytes)",
+    ]
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+async def download_rosbags_for_fault(
+    client: SovdClient,
+    entity_id: str,
+    fault_code: str,
+    entity_type: str,
+    output_dir: str,
+) -> list[TextContent]:
+    """Download all rosbag snapshots for a fault.
+
+    Args:
+        client: SOVD client instance.
+        entity_id: Entity identifier.
+        fault_code: Fault code.
+        entity_type: Entity type.
+        output_dir: Output directory path.
+
+    Returns:
+        Formatted TextContent list with download results.
+    """
+    # Get fault with environment data
+    fault_data = await client.get_fault(entity_id, fault_code, entity_type)
+
+    # Extract environment data
+    env_data = fault_data.get("environmentData") or fault_data.get("environment_data")
+    if not env_data:
+        return [
+            TextContent(
+                type="text",
+                text=f"No environment data found for fault {fault_code}",
+            )
+        ]
+
+    # Get extended data records
+    records = env_data.get("extendedDataRecords") or env_data.get("extended_data_records")
+    if not records:
+        return [
+            TextContent(
+                type="text",
+                text=f"No snapshot data found for fault {fault_code}",
+            )
+        ]
+
+    # Get rosbag snapshots
+    rosbag_snapshots = records.get("rosbagSnapshots") or records.get("rosbag_snapshots", [])
+    if not rosbag_snapshots:
+        freeze_frames = records.get("freezeFrameSnapshots") or records.get(
+            "freeze_frame_snapshots", []
+        )
+        if freeze_frames:
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Fault {fault_code} has only freeze frame snapshots "
+                    f"({len(freeze_frames)} total), no rosbag recordings to download.",
+                )
+            ]
+        return [
+            TextContent(
+                type="text",
+                text=f"No rosbag snapshots found for fault {fault_code}",
+            )
+        ]
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    downloaded: list[str] = []
+    errors: list[str] = []
+
+    for snap in rosbag_snapshots:
+        snap_id = snap.get("snapshotId") or snap.get("snapshot_id", "unknown")
+        bulk_uri = snap.get("bulkDataUri") or snap.get("bulk_data_uri")
+
+        if not bulk_uri:
+            errors.append(f"  - {snap_id}: No bulk_data_uri")
+            continue
+
+        try:
+            content, filename = await client.download_bulk_data(bulk_uri)
+
+            if not filename:
+                filename = f"{snap_id}.mcap"
+
+            file_path = output_path / filename
+            file_path.write_bytes(content)
+
+            size_mb = len(content) / (1024 * 1024)
+            downloaded.append(f"  - {filename} ({size_mb:.2f} MB)")
+
+        except Exception as e:
+            errors.append(f"  - {snap_id}: {e!s}")
+
+    lines = [f"Downloaded rosbags for fault {fault_code}:"]
+
+    if downloaded:
+        lines.append(f"\nSuccessfully downloaded ({len(downloaded)}):")
+        lines.extend(downloaded)
+
+    if errors:
+        lines.append(f"\nErrors ({len(errors)}):")
+        lines.extend(errors)
+
+    lines.append(f"\nOutput directory: {output_path}")
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
 # Map dotted names (from docs) to valid underscore names
 TOOL_ALIASES: dict[str, str] = {
     "sovd.version": "sovd_version",
@@ -363,6 +606,12 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_clear_all_faults": "sovd_clear_all_faults",
     "sovd_fault_snapshots": "sovd_fault_snapshots",
     "sovd_system_fault_snapshots": "sovd_system_fault_snapshots",
+    # Bulk data
+    "sovd_bulkdata_categories": "sovd_bulkdata_categories",
+    "sovd_bulkdata_list": "sovd_bulkdata_list",
+    "sovd_bulkdata_info": "sovd_bulkdata_info",
+    "sovd_bulkdata_download": "sovd_bulkdata_download",
+    "sovd_bulkdata_download_for_fault": "sovd_bulkdata_download_for_fault",
 }
 
 
@@ -1122,6 +1371,110 @@ def register_tools(server: Server, client: SovdClient) -> None:
                     "required": ["entity_id"],
                 },
             ),
+            # ==================== Bulk Data ====================
+            Tool(
+                name="sovd_bulkdata_categories",
+                description="List available bulk-data categories for an entity. Bulk-data categories contain downloadable files like rosbag recordings.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "apps",
+                        },
+                    },
+                    "required": ["entity_id"],
+                },
+            ),
+            Tool(
+                name="sovd_bulkdata_list",
+                description="List bulk-data items in a category. Use this to discover available rosbag recordings for download.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "category": {
+                            "type": "string",
+                            "description": "Category name (e.g., 'rosbags')",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "apps",
+                        },
+                    },
+                    "required": ["entity_id", "category"],
+                },
+            ),
+            Tool(
+                name="sovd_bulkdata_info",
+                description="Get information about a specific bulk-data item. Use the bulk_data_uri from fault environment_data snapshots.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "bulk_data_uri": {
+                            "type": "string",
+                            "description": "Full bulk-data URI path from fault response (e.g., '/apps/motor/bulk-data/rosbags/uuid')",
+                        },
+                    },
+                    "required": ["bulk_data_uri"],
+                },
+            ),
+            Tool(
+                name="sovd_bulkdata_download",
+                description="Download a bulk-data file (e.g., rosbag recording) to the specified directory. Use the bulk_data_uri from fault environment_data snapshots.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "bulk_data_uri": {
+                            "type": "string",
+                            "description": "Full bulk-data URI path from fault response",
+                        },
+                        "output_dir": {
+                            "type": "string",
+                            "description": "Directory to save the file (default: /tmp)",
+                            "default": "/tmp",
+                        },
+                    },
+                    "required": ["bulk_data_uri"],
+                },
+            ),
+            Tool(
+                name="sovd_bulkdata_download_for_fault",
+                description="Download all rosbag recordings associated with a specific fault. Retrieves the fault's environment_data and downloads all rosbag snapshots.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "fault_code": {
+                            "type": "string",
+                            "description": "The fault code",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "apps",
+                        },
+                        "output_dir": {
+                            "type": "string",
+                            "description": "Directory to save the files (default: /tmp)",
+                            "default": "/tmp",
+                        },
+                    },
+                    "required": ["entity_id", "fault_code"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -1394,6 +1747,36 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 args = ListConfigurationsArgs(**arguments)
                 result = await client.delete_all_configurations(args.entity_id, args.entity_type)
                 return format_json_response(result)
+
+            # ==================== Bulk Data ====================
+
+            elif normalized_name == "sovd_bulkdata_categories":
+                args = BulkDataCategoriesArgs(**arguments)
+                categories = await client.list_bulk_data_categories(
+                    args.entity_id, args.entity_type
+                )
+                return format_bulkdata_categories(categories, args.entity_id)
+
+            elif normalized_name == "sovd_bulkdata_list":
+                args = BulkDataListArgs(**arguments)
+                items = await client.list_bulk_data(args.entity_id, args.category, args.entity_type)
+                return format_bulkdata_list(items, args.entity_id, args.category)
+
+            elif normalized_name == "sovd_bulkdata_info":
+                args = BulkDataInfoArgs(**arguments)
+                info = await client.get_bulk_data_info(args.bulk_data_uri)
+                return format_bulkdata_info(info)
+
+            elif normalized_name == "sovd_bulkdata_download":
+                args = BulkDataDownloadArgs(**arguments)
+                content, filename = await client.download_bulk_data(args.bulk_data_uri)
+                return save_bulk_data_file(content, filename, args.bulk_data_uri, args.output_dir)
+
+            elif normalized_name == "sovd_bulkdata_download_for_fault":
+                args = BulkDataDownloadForFaultArgs(**arguments)
+                return await download_rosbags_for_fault(
+                    client, args.entity_id, args.fault_code, args.entity_type, args.output_dir
+                )
 
             else:
                 return format_error(f"Unknown tool: {name}")
