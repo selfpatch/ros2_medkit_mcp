@@ -27,10 +27,14 @@ from ros2_medkit_mcp.models import (
     EntityDataArgs,
     EntityGetArgs,
     EntityTopicDataArgs,
+    EnvironmentData,
     ExecutionArgs,
+    ExtendedDataRecords,
     FaultGetArgs,
+    FaultItem,
     FaultsListArgs,
     FaultSnapshotsArgs,
+    FreezeFrameSnapshot,
     FunctionIdArgs,
     GetConfigurationArgs,
     GetOperationArgs,
@@ -38,6 +42,7 @@ from ros2_medkit_mcp.models import (
     ListExecutionsArgs,
     ListOperationsArgs,
     PublishTopicArgs,
+    RosbagSnapshot,
     SetConfigurationArgs,
     SubareasArgs,
     SubcomponentsArgs,
@@ -106,6 +111,201 @@ def format_error(error: str) -> list[TextContent]:
         List containing a single TextContent with error JSON.
     """
     return format_result(ToolResult.fail(error))
+
+
+# ==================== Fault Formatting Helpers ====================
+
+
+def format_fault_item(item: FaultItem) -> str:
+    """Format a single fault item for LLM readability.
+
+    Args:
+        item: The fault item to format.
+
+    Returns:
+        Formatted string with fault details.
+    """
+    lines = [f"Fault: {item.code}"]
+    if item.fault_name:
+        lines[0] += f" - {item.fault_name}"
+    if item.severity:
+        lines.append(f"  Severity: {item.severity}")
+    if item.status:
+        lines.append(
+            f"  Status: {item.status.value if hasattr(item.status, 'value') else item.status}"
+        )
+    if item.is_confirmed is not None:
+        lines.append(f"  Confirmed: {item.is_confirmed}")
+    if item.is_current is not None:
+        lines.append(f"  Current: {item.is_current}")
+    if item.counter is not None:
+        lines.append(f"  Occurrences: {item.counter}")
+    if item.first_occurrence:
+        lines.append(f"  First Seen: {item.first_occurrence}")
+    if item.last_occurrence:
+        lines.append(f"  Last Seen: {item.last_occurrence}")
+    return "\n".join(lines)
+
+
+def format_fault_list(faults: list[dict[str, Any]]) -> list[TextContent]:
+    """Format a list of faults for LLM readability.
+
+    Args:
+        faults: List of fault dictionaries from the API.
+
+    Returns:
+        Formatted TextContent list.
+    """
+    if not faults:
+        return [TextContent(type="text", text="No faults found.")]
+
+    lines = [f"Found {len(faults)} fault(s):\n"]
+    for fault_dict in faults:
+        try:
+            item = FaultItem.model_validate(fault_dict)
+            lines.append(format_fault_item(item))
+            lines.append("")
+        except Exception:
+            # Fallback to basic formatting if model validation fails
+            code = fault_dict.get("code", "unknown")
+            name = fault_dict.get("faultName", "")
+            severity = fault_dict.get("severity", "")
+            status = fault_dict.get("status", "")
+            lines.append(f"Fault: {code}" + (f" - {name}" if name else ""))
+            if severity:
+                lines.append(f"  Severity: {severity}")
+            if status:
+                lines.append(f"  Status: {status}")
+            lines.append("")
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+def format_snapshot(snapshot: FreezeFrameSnapshot | RosbagSnapshot) -> str:
+    """Format a snapshot for display.
+
+    Args:
+        snapshot: A freeze frame or rosbag snapshot.
+
+    Returns:
+        Formatted string describing the snapshot.
+    """
+    lines = [f"  Snapshot: {snapshot.snapshot_id}"]
+    lines.append(f"    Timestamp: {snapshot.timestamp}")
+    if snapshot.data_source:
+        lines.append(f"    Source: {snapshot.data_source}")
+
+    if isinstance(snapshot, RosbagSnapshot):
+        lines.append(f"    Download URI: {snapshot.bulk_data_uri}")
+        if snapshot.file_size:
+            size_mb = snapshot.file_size / (1024 * 1024)
+            lines.append(f"    File Size: {size_mb:.2f} MB")
+        lines.append(f"    Available: {snapshot.is_available}")
+    elif isinstance(snapshot, FreezeFrameSnapshot) and snapshot.data:
+        lines.append(f"    Data: {json.dumps(snapshot.data, indent=6, default=str)}")
+
+    return "\n".join(lines)
+
+
+def format_environment_data(env_data: EnvironmentData) -> str:
+    """Format environment data for LLM readability.
+
+    Args:
+        env_data: Environment data with snapshots.
+
+    Returns:
+        Formatted string describing the environment data.
+    """
+    lines = ["\nEnvironment Data:"]
+
+    if env_data.extended_data_records:
+        records = env_data.extended_data_records
+
+        if records.freeze_frame_snapshots:
+            lines.append(f"  Freeze Frame Snapshots ({len(records.freeze_frame_snapshots)}):")
+            for snap in records.freeze_frame_snapshots:
+                lines.append(format_snapshot(snap))
+
+        if records.rosbag_snapshots:
+            lines.append(f"  Rosbag Snapshots ({len(records.rosbag_snapshots)}):")
+            for snap in records.rosbag_snapshots:
+                lines.append(format_snapshot(snap))
+
+    return "\n".join(lines)
+
+
+def format_fault_response(fault_data: dict[str, Any]) -> list[TextContent]:
+    """Format a fault response with environment data for LLM readability.
+
+    Args:
+        fault_data: Fault response dictionary from the API.
+
+    Returns:
+        Formatted TextContent list.
+    """
+    lines = []
+
+    # Parse the fault item
+    item_data = fault_data.get("item", fault_data)
+    try:
+        item = FaultItem.model_validate(item_data)
+        lines.append(format_fault_item(item))
+    except Exception:
+        # Fallback to basic formatting
+        code = item_data.get("code", "unknown")
+        lines.append(f"Fault: {code}")
+
+    # Parse environment data if present
+    env_data_dict = fault_data.get("environmentData") or fault_data.get("environment_data")
+    if env_data_dict:
+        try:
+            env_data = EnvironmentData.model_validate(env_data_dict)
+            lines.append(format_environment_data(env_data))
+        except Exception:
+            # Fallback: just show raw JSON for environment data
+            lines.append(f"\nEnvironment Data: {json.dumps(env_data_dict, indent=2, default=str)}")
+
+    # Include x-medkit extensions if present
+    x_medkit = fault_data.get("x-medkit") or item_data.get("x-medkit")
+    if x_medkit:
+        lines.append(f"\nROS 2 MedKit Extensions: {json.dumps(x_medkit, indent=2, default=str)}")
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+def format_snapshots_response(snapshots_data: dict[str, Any]) -> list[TextContent]:
+    """Format a snapshots response for LLM readability.
+
+    Args:
+        snapshots_data: Snapshots response dictionary from the API.
+
+    Returns:
+        Formatted TextContent list.
+    """
+    lines = ["Diagnostic Snapshots:"]
+
+    # Try to validate as ExtendedDataRecords
+    try:
+        records = ExtendedDataRecords.model_validate(snapshots_data)
+
+        if records.freeze_frame_snapshots:
+            lines.append(f"\nFreeze Frame Snapshots ({len(records.freeze_frame_snapshots)}):")
+            for snap in records.freeze_frame_snapshots:
+                lines.append(format_snapshot(snap))
+
+        if records.rosbag_snapshots:
+            lines.append(f"\nRosbag Snapshots ({len(records.rosbag_snapshots)}):")
+            for snap in records.rosbag_snapshots:
+                lines.append(format_snapshot(snap))
+
+        if not records.freeze_frame_snapshots and not records.rosbag_snapshots:
+            lines.append("  No snapshots available.")
+
+    except Exception:
+        # Fallback to raw JSON
+        lines.append(json.dumps(snapshots_data, indent=2, default=str))
+
+    return [TextContent(type="text", text="\n".join(lines))]
 
 
 # Map dotted names (from docs) to valid underscore names
@@ -980,12 +1180,12 @@ def register_tools(server: Server, client: SovdClient) -> None:
             elif normalized_name == "sovd_faults_list":
                 args = FaultsListArgs(**arguments)
                 faults = await client.list_faults(args.entity_id, args.entity_type)
-                return format_json_response(faults)
+                return format_fault_list(faults)
 
             elif normalized_name == "sovd_faults_get":
                 args = FaultGetArgs(**arguments)
                 fault = await client.get_fault(args.entity_id, args.fault_id, args.entity_type)
-                return format_json_response(fault)
+                return format_fault_response(fault)
 
             elif normalized_name == "sovd_faults_clear":
                 args = FaultGetArgs(**arguments)
@@ -1060,7 +1260,7 @@ def register_tools(server: Server, client: SovdClient) -> None:
 
             elif normalized_name == "sovd_all_faults_list":
                 faults = await client.list_all_faults()
-                return format_json_response(faults)
+                return format_fault_list(faults)
 
             elif normalized_name == "sovd_clear_all_faults":
                 args = ClearAllFaultsArgs(**arguments)
@@ -1072,12 +1272,12 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 snapshots = await client.get_fault_snapshots(
                     args.entity_id, args.fault_code, args.entity_type
                 )
-                return format_json_response(snapshots)
+                return format_snapshots_response(snapshots)
 
             elif normalized_name == "sovd_system_fault_snapshots":
                 args = SystemFaultSnapshotsArgs(**arguments)
                 snapshots = await client.get_system_fault_snapshots(args.fault_code)
-                return format_json_response(snapshots)
+                return format_snapshots_response(snapshots)
 
             # ==================== Entity Data ====================
 
