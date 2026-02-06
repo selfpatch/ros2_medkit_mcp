@@ -521,37 +521,6 @@ class FreezeFrameSnapshot(BaseModel):
     model_config = {"populate_by_name": True, "extra": "allow"}
 
 
-class BulkDataDescriptor(BaseModel):
-    """Descriptor for bulk data (rosbag) with download URI."""
-
-    id: str = Field(..., description="Bulk data identifier")
-    category: str | None = Field(
-        default=None,
-        description="Data category (e.g., 'rosbag', 'snapshot')",
-    )
-    bulk_data_uri: str = Field(
-        ...,
-        alias="bulkDataUri",
-        description="URI to download the bulk data file",
-    )
-    file_size: int | None = Field(
-        default=None,
-        alias="fileSize",
-        description="File size in bytes",
-    )
-    is_available: bool = Field(
-        default=True,
-        alias="isAvailable",
-        description="Whether the file is available for download",
-    )
-    timestamp: str | None = Field(
-        default=None,
-        description="ISO 8601 timestamp when the data was captured",
-    )
-
-    model_config = {"populate_by_name": True, "extra": "allow"}
-
-
 class RosbagSnapshot(BaseModel):
     """Rosbag snapshot with bulk data download URI."""
 
