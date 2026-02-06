@@ -419,7 +419,7 @@ def save_bulk_data_file(
     Returns:
         Formatted TextContent list with download result.
     """
-    output_path = Path(output_dir)
+    output_path = Path(output_dir).resolve()
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Generate filename if not provided
@@ -431,7 +431,16 @@ def save_bulk_data_file(
         if "." not in filename:
             filename += ".mcap"
 
-    file_path = output_path / filename
+    # Sanitize filename to prevent path traversal
+    safe_filename = Path(filename).name
+    if not safe_filename:
+        safe_filename = "download.mcap"
+
+    file_path = (output_path / safe_filename).resolve()
+    # Ensure the resolved path is still within output_dir
+    if not str(file_path).startswith(str(output_path)):
+        raise ValueError(f"Path traversal detected in filename: {filename}")
+
     file_path.write_bytes(content)
 
     size_mb = len(content) / (1024 * 1024)
@@ -507,7 +516,7 @@ async def download_rosbags_for_fault(
             )
         ]
 
-    output_path = Path(output_dir)
+    output_path = Path(output_dir).resolve()
     output_path.mkdir(parents=True, exist_ok=True)
 
     downloaded: list[str] = []
@@ -527,7 +536,13 @@ async def download_rosbags_for_fault(
             if not filename:
                 filename = f"{snap_id}.mcap"
 
-            file_path = output_path / filename
+            # Sanitize filename to prevent path traversal
+            safe_filename = Path(filename).name or f"{snap_id}.mcap"
+            file_path = (output_path / safe_filename).resolve()
+            if not str(file_path).startswith(str(output_path)):
+                errors.append(f"  - {snap_id}: Path traversal detected in filename")
+                continue
+
             file_path.write_bytes(content)
 
             size_mb = len(content) / (1024 * 1024)

@@ -1000,10 +1000,10 @@ class SovdClient:
         client = await self._ensure_client()
         response = await client.head(bulk_data_uri)
 
-        if response.status_code == 404:
+        if not response.is_success:
             raise SovdClientError(
-                message=f"Bulk data not found: {bulk_data_uri}",
-                status_code=404,
+                message=f"Bulk data not found: {bulk_data_uri} (HTTP {response.status_code})",
+                status_code=response.status_code,
             )
 
         headers = response.headers
@@ -1027,11 +1027,18 @@ class SovdClient:
         """Download a bulk-data file.
 
         Args:
-            bulk_data_uri: Full bulk-data URI path.
+            bulk_data_uri: Relative bulk-data URI path (must start with /).
 
         Returns:
             Tuple of (file_content, filename).
+
+        Raises:
+            ValueError: If the URI is an absolute URL (SSRF protection).
         """
+        # SSRF protection: reject absolute URLs - only allow relative paths
+        if bulk_data_uri.startswith(("http://", "https://", "//")):
+            raise ValueError(f"Absolute URLs not allowed for bulk data download: {bulk_data_uri}")
+
         client = await self._ensure_client()
         response = await client.get(bulk_data_uri, timeout=httpx.Timeout(300.0))
 
