@@ -14,6 +14,7 @@ from mcp.types import Resource, TextContent, Tool
 
 from ros2_medkit_mcp.client import SovdClient, SovdClientError
 from ros2_medkit_mcp.config import Settings
+from ros2_medkit_mcp.plugin import McpPlugin
 from ros2_medkit_mcp.models import (
     AppIdArgs,
     AreaComponentsArgs,
@@ -630,18 +631,19 @@ TOOL_ALIASES: dict[str, str] = {
 }
 
 
-def register_tools(server: Server, client: SovdClient) -> None:
+def register_tools(server: Server, client: SovdClient, plugins: list[McpPlugin] | None = None) -> None:
     """Register all MCP tools on the server.
 
     Args:
         server: The MCP server to register tools on.
         client: The SOVD client for making API calls.
+        plugins: Optional list of plugins providing additional tools.
     """
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
         """List available tools."""
-        return [
+        tools = [
             # ==================== Discovery ====================
             Tool(
                 name="sovd_version",
@@ -1491,6 +1493,14 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 },
             ),
         ]
+        # Append plugin tools
+        if plugins:
+            for plugin in plugins:
+                try:
+                    tools.extend(plugin.list_tools())
+                except Exception:
+                    logger.exception("Failed to list tools from plugin: %s", plugin.name)
+        return tools
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
@@ -1794,6 +1804,15 @@ def register_tools(server: Server, client: SovdClient) -> None:
                 )
 
             else:
+                # Try plugins before reporting unknown tool
+                if plugins:
+                    for plugin in plugins:
+                        try:
+                            plugin_tool_names = {t.name for t in plugin.list_tools()}
+                            if normalized_name in plugin_tool_names:
+                                return await plugin.call_tool(normalized_name, arguments)
+                        except Exception:
+                            logger.exception("Plugin %s failed to handle tool %s", plugin.name, normalized_name)
                 return format_error(f"Unknown tool: {name}")
 
         except SovdClientError as e:
@@ -1849,15 +1868,16 @@ def register_resources(server: Server) -> None:
         raise ValueError(f"Unknown resource URI: {uri}")
 
 
-def setup_mcp_app(server: Server, settings: Settings, client: SovdClient) -> None:
+def setup_mcp_app(server: Server, settings: Settings, client: SovdClient, plugins: list[McpPlugin] | None = None) -> None:
     """Set up the complete MCP application.
 
     Args:
         server: The MCP server to configure.
         settings: Application settings.
         client: The SOVD client for API calls.
+        plugins: Optional list of plugins providing additional tools.
     """
-    register_tools(server, client)
+    register_tools(server, client, plugins=plugins)
     register_resources(server)
     logger.info(
         "MCP server configured for %s",
