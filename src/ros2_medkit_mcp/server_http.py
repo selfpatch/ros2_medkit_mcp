@@ -79,6 +79,8 @@ def create_app() -> Starlette:
             }
         )
 
+    started_plugins: list = []
+
     async def on_startup() -> None:
         """Application startup handler."""
         logger.info("ros2_medkit MCP server starting (HTTP transport)")
@@ -87,14 +89,15 @@ def create_app() -> Starlette:
         for plugin in plugins:
             try:
                 await plugin.startup()
+                started_plugins.append(plugin)
                 logger.info("Plugin started: %s", plugin.name)
             except Exception:
                 logger.exception("Failed to start plugin: %s", plugin.name)
 
     async def on_shutdown() -> None:
         """Application shutdown handler."""
-        # Shutdown plugins
-        for plugin in plugins:
+        # Only shutdown plugins that started successfully
+        for plugin in started_plugins:
             try:
                 await plugin.shutdown()
             except Exception:

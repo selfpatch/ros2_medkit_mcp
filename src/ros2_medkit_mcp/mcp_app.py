@@ -14,7 +14,6 @@ from mcp.types import Resource, TextContent, Tool
 
 from ros2_medkit_mcp.client import SovdClient, SovdClientError
 from ros2_medkit_mcp.config import Settings
-from ros2_medkit_mcp.plugin import McpPlugin
 from ros2_medkit_mcp.models import (
     AppIdArgs,
     AreaComponentsArgs,
@@ -59,6 +58,7 @@ from ros2_medkit_mcp.models import (
     UpdateExecutionArgs,
     filter_entities,
 )
+from ros2_medkit_mcp.plugin import McpPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -631,7 +631,9 @@ TOOL_ALIASES: dict[str, str] = {
 }
 
 
-def register_tools(server: Server, client: SovdClient, plugins: list[McpPlugin] | None = None) -> None:
+def register_tools(
+    server: Server, client: SovdClient, plugins: list[McpPlugin] | None = None
+) -> None:
     """Register all MCP tools on the server.
 
     Args:
@@ -639,6 +641,8 @@ def register_tools(server: Server, client: SovdClient, plugins: list[McpPlugin] 
         client: The SOVD client for making API calls.
         plugins: Optional list of plugins providing additional tools.
     """
+    # Tool name → plugin mapping, built during list_tools and used for dispatch
+    plugin_tool_map: dict[str, McpPlugin] = {}
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
@@ -1497,7 +1501,10 @@ def register_tools(server: Server, client: SovdClient, plugins: list[McpPlugin] 
         if plugins:
             for plugin in plugins:
                 try:
-                    tools.extend(plugin.list_tools())
+                    plugin_tools = plugin.list_tools()
+                    tools.extend(plugin_tools)
+                    for t in plugin_tools:
+                        plugin_tool_map[t.name] = plugin
                 except Exception:
                     logger.exception("Failed to list tools from plugin: %s", plugin.name)
         return tools
@@ -1804,15 +1811,10 @@ def register_tools(server: Server, client: SovdClient, plugins: list[McpPlugin] 
                 )
 
             else:
-                # Try plugins before reporting unknown tool
-                if plugins:
-                    for plugin in plugins:
-                        try:
-                            plugin_tool_names = {t.name for t in plugin.list_tools()}
-                            if normalized_name in plugin_tool_names:
-                                return await plugin.call_tool(normalized_name, arguments)
-                        except Exception:
-                            logger.exception("Plugin %s failed to handle tool %s", plugin.name, normalized_name)
+                # Check plugin tool map before reporting unknown tool
+                plugin = plugin_tool_map.get(normalized_name)
+                if plugin is not None:
+                    return await plugin.call_tool(normalized_name, arguments)
                 return format_error(f"Unknown tool: {name}")
 
         except SovdClientError as e:
@@ -1868,7 +1870,9 @@ def register_resources(server: Server) -> None:
         raise ValueError(f"Unknown resource URI: {uri}")
 
 
-def setup_mcp_app(server: Server, settings: Settings, client: SovdClient, plugins: list[McpPlugin] | None = None) -> None:
+def setup_mcp_app(
+    server: Server, settings: Settings, client: SovdClient, plugins: list[McpPlugin] | None = None
+) -> None:
     """Set up the complete MCP application.
 
     Args:
