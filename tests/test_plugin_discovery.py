@@ -1,8 +1,8 @@
 """Tests for MCP plugin discovery and integration."""
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 from mcp.types import TextContent, Tool
 
 from ros2_medkit_mcp.plugin import discover_plugins
@@ -14,9 +14,15 @@ class FakePlugin:
         return "fake"
 
     def list_tools(self) -> list[Tool]:
-        return [Tool(name="fake_tool", description="A fake tool", inputSchema={"type": "object", "properties": {}})]
+        return [
+            Tool(
+                name="fake_tool",
+                description="A fake tool",
+                inputSchema={"type": "object", "properties": {}},
+            )
+        ]
 
-    async def call_tool(self, name: str, arguments: dict) -> list[TextContent]:
+    async def call_tool(self, name: str, _arguments: dict[str, Any]) -> list[TextContent]:
         if name == "fake_tool":
             return [TextContent(type="text", text="fake result")]
         raise ValueError(f"Unknown tool: {name}")

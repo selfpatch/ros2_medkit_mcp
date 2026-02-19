@@ -34,11 +34,13 @@ async def run_server() -> None:
     client = SovdClient(settings)
     plugins = discover_plugins()
 
+    started_plugins = []
     try:
         # Start plugins
         for plugin in plugins:
             try:
                 await plugin.startup()
+                started_plugins.append(plugin)
                 logger.info("Plugin started: %s", plugin.name)
             except Exception:
                 logger.exception("Failed to start plugin: %s", plugin.name)
@@ -52,8 +54,8 @@ async def run_server() -> None:
                 server.create_initialization_options(),
             )
     finally:
-        # Shutdown plugins
-        for plugin in plugins:
+        # Only shutdown plugins that started successfully
+        for plugin in started_plugins:
             try:
                 await plugin.shutdown()
             except Exception:
