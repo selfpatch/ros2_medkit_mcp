@@ -13,6 +13,7 @@ from mcp.server.stdio import stdio_server
 from ros2_medkit_mcp.client import SovdClient
 from ros2_medkit_mcp.config import get_settings
 from ros2_medkit_mcp.mcp_app import create_mcp_server, setup_mcp_app
+from ros2_medkit_mcp.plugin import discover_plugins
 
 # Configure logging to stderr to avoid interfering with stdio transport
 logging.basicConfig(
@@ -31,9 +32,18 @@ async def run_server() -> None:
 
     server = create_mcp_server()
     client = SovdClient(settings)
+    plugins = discover_plugins()
 
     try:
-        setup_mcp_app(server, settings, client)
+        # Start plugins
+        for plugin in plugins:
+            try:
+                await plugin.startup()
+                logger.info("Plugin started: %s", plugin.name)
+            except Exception:
+                logger.exception("Failed to start plugin: %s", plugin.name)
+
+        setup_mcp_app(server, settings, client, plugins=plugins)
 
         async with stdio_server() as (read_stream, write_stream):
             await server.run(
@@ -42,6 +52,12 @@ async def run_server() -> None:
                 server.create_initialization_options(),
             )
     finally:
+        # Shutdown plugins
+        for plugin in plugins:
+            try:
+                await plugin.shutdown()
+            except Exception:
+                logger.exception("Failed to shutdown plugin: %s", plugin.name)
         await client.close()
         logger.info("Server shutdown complete")
 

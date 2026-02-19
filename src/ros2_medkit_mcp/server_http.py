@@ -18,6 +18,7 @@ from starlette.routing import Mount, Route
 from ros2_medkit_mcp.client import SovdClient
 from ros2_medkit_mcp.config import get_settings
 from ros2_medkit_mcp.mcp_app import create_mcp_server, setup_mcp_app
+from ros2_medkit_mcp.plugin import discover_plugins
 
 # Configure logging
 logging.basicConfig(
@@ -36,7 +37,8 @@ def create_app() -> Starlette:
     settings = get_settings()
     mcp_server = create_mcp_server()
     client = SovdClient(settings)
-    setup_mcp_app(mcp_server, settings, client)
+    plugins = discover_plugins()
+    setup_mcp_app(mcp_server, settings, client, plugins=plugins)
 
     # Create SSE transport - path is where clients POST messages
     sse_transport = SseServerTransport("/mcp/messages/")
@@ -81,9 +83,22 @@ def create_app() -> Starlette:
         """Application startup handler."""
         logger.info("ros2_medkit MCP server starting (HTTP transport)")
         logger.info("Connecting to SOVD API at %s", settings.base_url)
+        # Start plugins
+        for plugin in plugins:
+            try:
+                await plugin.startup()
+                logger.info("Plugin started: %s", plugin.name)
+            except Exception:
+                logger.exception("Failed to start plugin: %s", plugin.name)
 
     async def on_shutdown() -> None:
         """Application shutdown handler."""
+        # Shutdown plugins
+        for plugin in plugins:
+            try:
+                await plugin.shutdown()
+            except Exception:
+                logger.exception("Failed to shutdown plugin: %s", plugin.name)
         await client.close()
         logger.info("Server shutdown complete")
 
