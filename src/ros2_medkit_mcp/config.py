@@ -27,7 +27,7 @@ class Settings(BaseModel):
         description="Base URL of the ros2_medkit SOVD API",
     )
     bearer_token: str | None = Field(
-        default_factory=lambda: os.getenv("ROS2_MEDKIT_BEARER_TOKEN"),
+        default_factory=lambda: os.getenv("ROS2_MEDKIT_BEARER_TOKEN") or None,
         description="Optional Bearer token for authentication",
     )
     timeout_seconds: float = Field(
