@@ -1502,8 +1502,22 @@ def register_tools(
             for plugin in plugins:
                 try:
                     plugin_tools = plugin.list_tools()
-                    tools.extend(plugin_tools)
                     for t in plugin_tools:
+                        if t.name in TOOL_ALIASES:
+                            logger.warning(
+                                "Plugin %s: tool '%s' collides with built-in tool, skipping",
+                                plugin.name,
+                                t.name,
+                            )
+                            continue
+                        if t.name in plugin_tool_map:
+                            logger.warning(
+                                "Plugin %s: tool '%s' collides with another plugin tool, skipping",
+                                plugin.name,
+                                t.name,
+                            )
+                            continue
+                        tools.append(t)
                         plugin_tool_map[t.name] = plugin
                 except Exception:
                     logger.exception("Failed to list tools from plugin: %s", plugin.name)

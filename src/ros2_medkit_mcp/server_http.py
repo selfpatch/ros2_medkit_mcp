@@ -18,7 +18,7 @@ from starlette.routing import Mount, Route
 from ros2_medkit_mcp.client import SovdClient
 from ros2_medkit_mcp.config import get_settings
 from ros2_medkit_mcp.mcp_app import create_mcp_server, setup_mcp_app
-from ros2_medkit_mcp.plugin import discover_plugins
+from ros2_medkit_mcp.plugin import McpPlugin, discover_plugins, shutdown_plugins, start_plugins
 
 # Configure logging
 logging.basicConfig(
@@ -38,7 +38,6 @@ def create_app() -> Starlette:
     mcp_server = create_mcp_server()
     client = SovdClient(settings)
     plugins = discover_plugins()
-    setup_mcp_app(mcp_server, settings, client, plugins=plugins)
 
     # Create SSE transport - path is where clients POST messages
     sse_transport = SseServerTransport("/mcp/messages/")
@@ -79,29 +78,19 @@ def create_app() -> Starlette:
             }
         )
 
-    started_plugins: list = []
+    started_plugins: list[McpPlugin] = []
 
     async def on_startup() -> None:
         """Application startup handler."""
         logger.info("ros2_medkit MCP server starting (HTTP transport)")
         logger.info("Connecting to SOVD API at %s", settings.base_url)
-        # Start plugins
-        for plugin in plugins:
-            try:
-                await plugin.startup()
-                started_plugins.append(plugin)
-                logger.info("Plugin started: %s", plugin.name)
-            except Exception:
-                logger.exception("Failed to start plugin: %s", plugin.name)
+        started = await start_plugins(plugins)
+        started_plugins.extend(started)
+        setup_mcp_app(mcp_server, settings, client, plugins=started_plugins)
 
     async def on_shutdown() -> None:
         """Application shutdown handler."""
-        # Only shutdown plugins that started successfully
-        for plugin in started_plugins:
-            try:
-                await plugin.shutdown()
-            except Exception:
-                logger.exception("Failed to shutdown plugin: %s", plugin.name)
+        await shutdown_plugins(started_plugins)
         await client.close()
         logger.info("Server shutdown complete")
 

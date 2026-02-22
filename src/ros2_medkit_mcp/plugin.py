@@ -43,8 +43,33 @@ def discover_plugins() -> list[McpPlugin]:
         try:
             plugin_cls = ep.load()
             plugin = plugin_cls()
+            if not hasattr(plugin, "name") or not hasattr(plugin, "list_tools"):
+                logger.warning("Plugin %s does not implement McpPlugin, skipping", ep.name)
+                continue
             logger.info("Discovered plugin: %s (from %s)", plugin.name, ep.value)
             plugins.append(plugin)
         except Exception:
             logger.exception("Failed to load plugin: %s", ep.name)
     return plugins
+
+
+async def start_plugins(plugins: list[McpPlugin]) -> list[McpPlugin]:
+    """Start plugins, returning only those that started successfully."""
+    started: list[McpPlugin] = []
+    for plugin in plugins:
+        try:
+            await plugin.startup()
+            started.append(plugin)
+            logger.info("Plugin started: %s", plugin.name)
+        except Exception:
+            logger.exception("Failed to start plugin: %s", plugin.name)
+    return started
+
+
+async def shutdown_plugins(plugins: list[McpPlugin]) -> None:
+    """Shut down plugins, logging errors without raising."""
+    for plugin in plugins:
+        try:
+            await plugin.shutdown()
+        except Exception:
+            logger.exception("Failed to shutdown plugin: %s", plugin.name)
