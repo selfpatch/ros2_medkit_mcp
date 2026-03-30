@@ -108,9 +108,10 @@ class TestSovdClient:
             )
         )
 
-        with pytest.raises(SovdClientError):
+        with pytest.raises(SovdClientError) as exc_info:
             await client.get_version()
 
+        assert "internal-error" in str(exc_info.value)
         await client.close()
 
     @respx.mock
@@ -330,7 +331,7 @@ class TestSovdClient:
             )
         )
 
-        with pytest.raises((SovdClientError, Exception)):
+        with pytest.raises(SovdClientError):
             await client.get_version()
 
         await client.close()
