@@ -88,6 +88,23 @@ def _extract_filename(content_disposition: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _wrap_body_dict(api_func: Any, body_dict: dict[str, Any]) -> Any:
+    """Wrap a raw dict as the body model expected by a generated API function.
+
+    Generated functions require attrs model instances (with to_dict()), not raw dicts.
+    Extracts the body type from the function's signature and creates it via from_dict().
+    """
+    import inspect
+
+    sig = inspect.signature(api_func)
+    body_param = sig.parameters.get("body")
+    if body_param is not None and body_param.annotation is not inspect.Parameter.empty:
+        body_cls = body_param.annotation
+        if hasattr(body_cls, "from_dict"):
+            return body_cls.from_dict(body_dict)
+    return body_dict
+
+
 def _validate_relative_uri(uri: str) -> None:
     """Reject absolute URLs to prevent SSRF."""
     if uri.startswith(("http://", "https://", "//")):
@@ -236,6 +253,17 @@ _ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
 }
 
 
+# Validate all function references at import time
+for _resource, _methods in _ENTITY_FUNC_MAP.items():
+    for _method, _types in _methods.items():
+        for _etype, _func in _types.items():
+            if not hasattr(_func, "asyncio"):
+                raise ImportError(
+                    f"Generated API function {_resource}/{_method}/{_etype} "
+                    f"({_func}) missing .asyncio attribute"
+                )
+
+
 def _entity_func(resource: str, method: str, entity_type: str) -> Any:
     """Look up the generated API function for a resource/method/entity_type combo."""
     resource_map = _ENTITY_FUNC_MAP.get(resource)
@@ -298,7 +326,13 @@ class SovdClient:
             self._entered = False
 
     async def _call(self, api_func: Any, **kwargs: Any) -> Any:
-        """Call a generated API function, converting errors to SovdClientError."""
+        """Call a generated API function, converting errors to SovdClientError.
+
+        Body dicts are auto-wrapped into the generated model expected by the
+        API function (generated functions require attrs models with to_dict()).
+        """
+        if "body" in kwargs and isinstance(kwargs["body"], dict):
+            kwargs["body"] = _wrap_body_dict(api_func, kwargs["body"])
         client = await self._ensure_client()
         try:
             result = await client.call(api_func, **kwargs)
