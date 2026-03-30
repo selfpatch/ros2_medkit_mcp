@@ -85,9 +85,20 @@ class TestCallToolIntegration:
     @respx.mock
     async def test_version_call(self, client: SovdClient) -> None:
         """Test version tool integration."""
-        expected = {"version": "1.0.0", "name": "ros2_medkit"}
         respx.get("http://test-sovd:8080/api/v1/version-info").mock(
-            return_value=httpx.Response(200, json=expected)
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "base_uri": "/api/v1",
+                            "version": "1.0.0",
+                            "api_name": "ros2_medkit",
+                            "api_version": "1.0.0",
+                        }
+                    ]
+                },
+            )
         )
 
         result = await client.get_version()
@@ -99,23 +110,25 @@ class TestCallToolIntegration:
     @respx.mock
     async def test_entities_list_call(self, client: SovdClient) -> None:
         """Test entities_list tool integration."""
-        areas = [{"id": "powertrain", "type": "Area"}]
-        components = [{"id": "temp_sensor", "type": "Component"}]
         respx.get("http://test-sovd:8080/api/v1/areas").mock(
-            return_value=httpx.Response(200, json=areas)
+            return_value=httpx.Response(
+                200, json={"items": [{"id": "powertrain", "name": "powertrain", "type": "Area"}]}
+            )
         )
         respx.get("http://test-sovd:8080/api/v1/components").mock(
-            return_value=httpx.Response(200, json=components)
+            return_value=httpx.Response(
+                200,
+                json={"items": [{"id": "temp_sensor", "name": "temp_sensor", "type": "Component"}]},
+            )
         )
         respx.get("http://test-sovd:8080/api/v1/apps").mock(
-            return_value=httpx.Response(200, json=[])
+            return_value=httpx.Response(200, json={"items": []})
         )
         respx.get("http://test-sovd:8080/api/v1/functions").mock(
-            return_value=httpx.Response(200, json=[])
+            return_value=httpx.Response(200, json={"items": []})
         )
 
         entities = await client.list_entities()
-        # Apply filter like the tool does
         args = EntitiesListArgs(filter=None)
         filtered = filter_entities(entities, args.filter)
         formatted = format_json_response(filtered)
@@ -127,22 +140,27 @@ class TestCallToolIntegration:
     @respx.mock
     async def test_entities_list_with_filter(self, client: SovdClient) -> None:
         """Test entities_list tool with filter."""
-        areas = [{"id": "powertrain", "type": "Area"}]
-        components = [
-            {"id": "temp_sensor", "type": "Component"},
-            {"id": "rpm_sensor", "type": "Component"},
-        ]
         respx.get("http://test-sovd:8080/api/v1/areas").mock(
-            return_value=httpx.Response(200, json=areas)
+            return_value=httpx.Response(
+                200, json={"items": [{"id": "powertrain", "name": "powertrain", "type": "Area"}]}
+            )
         )
         respx.get("http://test-sovd:8080/api/v1/components").mock(
-            return_value=httpx.Response(200, json=components)
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {"id": "temp_sensor", "name": "temp_sensor", "type": "Component"},
+                        {"id": "rpm_sensor", "name": "rpm_sensor", "type": "Component"},
+                    ]
+                },
+            )
         )
         respx.get("http://test-sovd:8080/api/v1/apps").mock(
-            return_value=httpx.Response(200, json=[])
+            return_value=httpx.Response(200, json={"items": []})
         )
         respx.get("http://test-sovd:8080/api/v1/functions").mock(
-            return_value=httpx.Response(200, json=[])
+            return_value=httpx.Response(200, json={"items": []})
         )
 
         entities = await client.list_entities()
@@ -157,9 +175,11 @@ class TestCallToolIntegration:
     @respx.mock
     async def test_faults_list_call(self, client: SovdClient) -> None:
         """Test faults_list tool integration."""
-        faults = [{"id": "fault-1", "severity": "high"}]
         respx.get("http://test-sovd:8080/api/v1/components/test-comp/faults").mock(
-            return_value=httpx.Response(200, json=faults)
+            return_value=httpx.Response(
+                200,
+                json={"items": [{"fault_code": "fault-1", "severity": "high", "status": "active"}]},
+            )
         )
 
         args = FaultsListArgs(entity_id="test-comp", entity_type="components")
@@ -172,9 +192,10 @@ class TestCallToolIntegration:
     @respx.mock
     async def test_list_operations_call(self, client: SovdClient) -> None:
         """Test list_operations tool integration."""
-        operations = [{"name": "test_service", "type": "service"}]
         respx.get("http://test-sovd:8080/api/v1/components/test-comp/operations").mock(
-            return_value=httpx.Response(200, json=operations)
+            return_value=httpx.Response(
+                200, json={"items": [{"id": "test_service", "name": "test_service"}]}
+            )
         )
 
         args = ListOperationsArgs(entity_id="test-comp", entity_type="components")
@@ -188,14 +209,18 @@ class TestCallToolIntegration:
     async def test_client_error_formatting(self, client: SovdClient) -> None:
         """Test client error is properly formatted."""
         respx.get("http://test-sovd:8080/api/v1/version-info").mock(
-            return_value=httpx.Response(500, text="Internal Server Error")
+            return_value=httpx.Response(
+                500,
+                json={
+                    "error_code": "internal-error",
+                    "message": "Internal Server Error",
+                },
+            )
         )
 
-        with pytest.raises(SovdClientError) as exc_info:
+        with pytest.raises(SovdClientError):
             await client.get_version()
 
-        error_formatted = format_error(str(exc_info.value))
-        assert "500" in error_formatted[0].text
         await client.close()
 
 

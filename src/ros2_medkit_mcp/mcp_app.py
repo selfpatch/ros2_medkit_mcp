@@ -175,8 +175,9 @@ def format_fault_list(faults: list[dict[str, Any]]) -> list[TextContent]:
             lines.append("")
         except Exception:
             # Fallback to basic formatting if model validation fails
-            code = fault_dict.get("code", "unknown")
-            name = fault_dict.get("faultName", "")
+            # Check both camelCase (raw gateway) and snake_case (generated client)
+            code = fault_dict.get("code") or fault_dict.get("fault_code", "unknown")
+            name = fault_dict.get("faultName") or fault_dict.get("fault_name", "")
             severity = fault_dict.get("severity", "")
             status = fault_dict.get("status", "")
             lines.append(f"Fault: {code}" + (f" - {name}" if name else ""))
@@ -259,8 +260,8 @@ def format_fault_response(fault_data: dict[str, Any]) -> list[TextContent]:
         item = FaultItem.model_validate(item_data)
         lines.append(format_fault_item(item))
     except Exception:
-        # Fallback to basic formatting
-        code = item_data.get("code", "unknown")
+        # Fallback - check both camelCase (raw gateway) and snake_case (generated client)
+        code = item_data.get("code") or item_data.get("fault_code", "unknown")
         lines.append(f"Fault: {code}")
 
     # Parse environment data if present
@@ -1746,7 +1747,7 @@ def register_tools(
                     args.entity_id,
                     args.operation_name,
                     args.execution_id,
-                    args.request_data,
+                    args.update_data,
                     args.entity_type,
                 )
                 return format_json_response(result)
