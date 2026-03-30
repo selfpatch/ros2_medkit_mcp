@@ -275,7 +275,6 @@ class TestSaveBulkDataFile:
             )
 
             assert "Downloaded successfully" in result[0].text
-            # Should use last URI component with .mcap extension
             assert "my-uuid-123.mcap" in result[0].text
 
     def test_save_creates_directory(self) -> None:
@@ -312,8 +311,8 @@ class TestClientBulkDataMethods:
     async def test_list_bulk_data(self, client: SovdClient) -> None:
         """Test list_bulk_data method."""
         items = [
-            {"id": "uuid-1", "name": "File 1"},
-            {"id": "uuid-2", "name": "File 2"},
+            {"id": "uuid-1", "name": "File 1", "size": 1024},
+            {"id": "uuid-2", "name": "File 2", "size": 2048},
         ]
         respx.get("http://test-sovd:8080/api/v1/apps/motor/bulk-data/rosbags").mock(
             return_value=httpx.Response(200, json={"items": items})
@@ -403,20 +402,25 @@ class TestDownloadRosbagsForFault:
     async def test_download_rosbags_success(self, client: SovdClient) -> None:
         """Test downloading rosbags for a fault."""
         fault_response = {
-            "item": {"code": "MOTOR_OVERHEAT", "faultName": "Motor Overheating"},
-            "environmentData": {
-                "extendedDataRecords": {
-                    "freezeFrameSnapshots": [],
-                    "rosbagSnapshots": [
+            "item": {
+                "code": "MOTOR_OVERHEAT",
+                "severity": "high",
+                "status": {"aggregatedStatus": "active"},
+                "fault_name": "Motor Overheating",
+            },
+            "environment_data": {
+                "extended_data_records": {
+                    "freeze_frame_snapshots": [],
+                    "rosbag_snapshots": [
                         {
-                            "snapshotId": "rb-1",
+                            "snapshot_id": "rb-1",
                             "timestamp": "2026-02-04T10:00:00Z",
-                            "bulkDataUri": "/apps/motor/bulk-data/rosbags/rb-1",
+                            "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-1",
                         },
                         {
-                            "snapshotId": "rb-2",
+                            "snapshot_id": "rb-2",
                             "timestamp": "2026-02-04T10:01:00Z",
-                            "bulkDataUri": "/apps/motor/bulk-data/rosbags/rb-2",
+                            "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-2",
                         },
                     ],
                 }
@@ -461,13 +465,17 @@ class TestDownloadRosbagsForFault:
     async def test_download_only_freeze_frames(self, client: SovdClient) -> None:
         """Test fault with only freeze frames (no rosbags)."""
         fault_response = {
-            "item": {"code": "MINOR_FAULT"},
-            "environmentData": {
-                "extendedDataRecords": {
-                    "freezeFrameSnapshots": [
-                        {"snapshotId": "ff-1", "timestamp": "2026-02-04T10:00:00Z", "data": {}}
+            "item": {
+                "code": "MINOR_FAULT",
+                "severity": "low",
+                "status": {"aggregatedStatus": "active"},
+            },
+            "environment_data": {
+                "extended_data_records": {
+                    "freeze_frame_snapshots": [
+                        {"snapshot_id": "ff-1", "timestamp": "2026-02-04T10:00:00Z", "data": {}}
                     ],
-                    "rosbagSnapshots": [],
+                    "rosbag_snapshots": [],
                 }
             },
         }
@@ -487,7 +495,14 @@ class TestDownloadRosbagsForFault:
     @respx.mock
     async def test_download_no_environment_data(self, client: SovdClient) -> None:
         """Test fault without environment data."""
-        fault_response = {"item": {"code": "NO_ENV_FAULT"}}
+        fault_response = {
+            "item": {
+                "code": "NO_ENV_FAULT",
+                "severity": "low",
+                "status": {"aggregatedStatus": "active"},
+            },
+            "environment_data": {},
+        }
 
         respx.get("http://test-sovd:8080/api/v1/apps/motor/faults/NO_ENV_FAULT").mock(
             return_value=httpx.Response(200, json=fault_response)
@@ -503,20 +518,24 @@ class TestDownloadRosbagsForFault:
     async def test_download_with_errors(self, client: SovdClient) -> None:
         """Test downloading with some failures."""
         fault_response = {
-            "item": {"code": "TEST_FAULT"},
-            "environmentData": {
-                "extendedDataRecords": {
-                    "freezeFrameSnapshots": [],
-                    "rosbagSnapshots": [
+            "item": {
+                "code": "TEST_FAULT",
+                "severity": "high",
+                "status": {"aggregatedStatus": "active"},
+            },
+            "environment_data": {
+                "extended_data_records": {
+                    "freeze_frame_snapshots": [],
+                    "rosbag_snapshots": [
                         {
-                            "snapshotId": "rb-ok",
+                            "snapshot_id": "rb-ok",
                             "timestamp": "2026-02-04T10:00:00Z",
-                            "bulkDataUri": "/apps/motor/bulk-data/rosbags/rb-ok",
+                            "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-ok",
                         },
                         {
-                            "snapshotId": "rb-fail",
+                            "snapshot_id": "rb-fail",
                             "timestamp": "2026-02-04T10:01:00Z",
-                            "bulkDataUri": "/apps/motor/bulk-data/rosbags/rb-fail",
+                            "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-fail",
                         },
                     ],
                 }

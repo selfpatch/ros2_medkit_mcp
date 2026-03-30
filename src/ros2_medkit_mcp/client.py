@@ -1,15 +1,32 @@
 """HTTP client wrapper for ros2_medkit SOVD API.
 
-Provides async HTTP client with proper lifecycle management,
-authentication, and error handling.
+Delegates to the generated ros2-medkit-client package (MedkitClient)
+while preserving the SovdClient interface used by mcp_app.py.
+
+Note: response dicts use snake_case field names from the generated
+client's to_dict() method (e.g. fault_code, environment_data),
+not the gateway's camelCase JSON.
 """
 
+import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Any
+from urllib.parse import quote
 
 import httpx
+from ros2_medkit_client import MedkitClient, MedkitError
+from ros2_medkit_client.api import (
+    bulk_data,
+    configuration,
+    data,
+    discovery,
+    faults,
+    operations,
+    server,
+)
 
 from ros2_medkit_mcp.config import Settings
 
@@ -30,653 +47,443 @@ class SovdClientError(Exception):
         self.request_id = request_id
 
 
+def _to_dict(obj: Any) -> Any:
+    """Convert a generated model object to a dict, or pass through if already a dict/list."""
+    if obj is None:
+        return {}
+    if isinstance(obj, dict | str | int | float | bool):
+        return obj
+    if isinstance(obj, list):
+        return [_to_dict(item) for item in obj]
+    if hasattr(obj, "to_dict"):
+        return obj.to_dict()
+    return obj
+
+
+def _extract_items(result: Any) -> list[dict[str, Any]]:
+    """Extract items list from a collection response."""
+    d = _to_dict(result)
+    if isinstance(d, list):
+        return d
+    if isinstance(d, dict):
+        for key in (
+            "items",
+            "areas",
+            "components",
+            "apps",
+            "functions",
+            "faults",
+            "configurations",
+        ):
+            if key in d:
+                return d[key]
+    return [d] if d else []
+
+
+def _extract_filename(content_disposition: str) -> str | None:
+    """Extract filename from Content-Disposition header."""
+    if "filename=" not in content_disposition:
+        return None
+    match = re.search(r'filename="?([^"]+)"?', content_disposition)
+    return match.group(1) if match else None
+
+
+def _validate_relative_uri(uri: str) -> None:
+    """Reject absolute URLs to prevent SSRF."""
+    if uri.startswith(("http://", "https://", "//")):
+        raise ValueError(f"Absolute URLs not allowed: {uri}")
+
+
+# Mapping of (entity_type, resource, method) -> generated function name
+# entity_type is plural ("components"), singular is derived by stripping trailing "s"
+_ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
+    "faults": {
+        "list": {
+            "components": faults.list_component_faults,
+            "apps": faults.list_app_faults,
+            "areas": faults.list_area_faults,
+            "functions": faults.list_function_faults,
+        },
+        "get": {
+            "components": faults.get_component_fault,
+            "apps": faults.get_app_fault,
+            "areas": faults.get_area_fault,
+            "functions": faults.get_function_fault,
+        },
+        "clear": {
+            "components": faults.clear_component_fault,
+            "apps": faults.clear_app_fault,
+            "areas": faults.clear_area_fault,
+            "functions": faults.clear_function_fault,
+        },
+        "clear_all": {
+            "components": faults.clear_all_component_faults,
+            "apps": faults.clear_all_app_faults,
+            "areas": faults.clear_all_area_faults,
+            "functions": faults.clear_all_function_faults,
+        },
+    },
+    "data": {
+        "list": {
+            "components": data.list_component_data,
+            "apps": data.list_app_data,
+            "areas": data.list_area_data,
+            "functions": data.list_function_data,
+        },
+        "get": {
+            "components": data.get_component_data_item,
+            "apps": data.get_app_data_item,
+            "areas": data.get_area_data_item,
+            "functions": data.get_function_data_item,
+        },
+        "put": {
+            "components": data.put_component_data_item,
+            "apps": data.put_app_data_item,
+            "areas": data.put_area_data_item,
+            "functions": data.put_function_data_item,
+        },
+    },
+    "operations": {
+        "list": {
+            "components": operations.list_component_operations,
+            "apps": operations.list_app_operations,
+            "areas": operations.list_area_operations,
+            "functions": operations.list_function_operations,
+        },
+        "get": {
+            "components": operations.get_component_operation,
+            "apps": operations.get_app_operation,
+            "areas": operations.get_area_operation,
+            "functions": operations.get_function_operation,
+        },
+        "execute": {
+            "components": operations.execute_component_operation,
+            "apps": operations.execute_app_operation,
+            "areas": operations.execute_area_operation,
+            "functions": operations.execute_function_operation,
+        },
+        "list_executions": {
+            "components": operations.list_component_executions,
+            "apps": operations.list_app_executions,
+            "areas": operations.list_area_executions,
+            "functions": operations.list_function_executions,
+        },
+        "get_execution": {
+            "components": operations.get_component_execution,
+            "apps": operations.get_app_execution,
+            "areas": operations.get_area_execution,
+            "functions": operations.get_function_execution,
+        },
+        "update_execution": {
+            "components": operations.update_component_execution,
+            "apps": operations.update_app_execution,
+            "areas": operations.update_area_execution,
+            "functions": operations.update_function_execution,
+        },
+        "cancel_execution": {
+            "components": operations.cancel_component_execution,
+            "apps": operations.cancel_app_execution,
+            "areas": operations.cancel_area_execution,
+            "functions": operations.cancel_function_execution,
+        },
+    },
+    "configurations": {
+        "list": {
+            "components": configuration.list_component_configurations,
+            "apps": configuration.list_app_configurations,
+            "areas": configuration.list_area_configurations,
+            "functions": configuration.list_function_configurations,
+        },
+        "get": {
+            "components": configuration.get_component_configuration,
+            "apps": configuration.get_app_configuration,
+            "areas": configuration.get_area_configuration,
+            "functions": configuration.get_function_configuration,
+        },
+        "set": {
+            "components": configuration.set_component_configuration,
+            "apps": configuration.set_app_configuration,
+            "areas": configuration.set_area_configuration,
+            "functions": configuration.set_function_configuration,
+        },
+        "delete": {
+            "components": configuration.delete_component_configuration,
+            "apps": configuration.delete_app_configuration,
+            "areas": configuration.delete_area_configuration,
+            "functions": configuration.delete_function_configuration,
+        },
+        "delete_all": {
+            "components": configuration.delete_all_component_configurations,
+            "apps": configuration.delete_all_app_configurations,
+            "areas": configuration.delete_all_area_configurations,
+            "functions": configuration.delete_all_function_configurations,
+        },
+    },
+    "bulk_data": {
+        "list_categories": {
+            "components": bulk_data.list_component_bulk_data_categories,
+            "apps": bulk_data.list_app_bulk_data_categories,
+            "areas": bulk_data.list_area_bulk_data_categories,
+            "functions": bulk_data.list_function_bulk_data_categories,
+        },
+        "list": {
+            "components": bulk_data.list_component_bulk_data_descriptors,
+            "apps": bulk_data.list_app_bulk_data_descriptors,
+            "areas": bulk_data.list_area_bulk_data_descriptors,
+            "functions": bulk_data.list_function_bulk_data_descriptors,
+        },
+    },
+}
+
+
+def _entity_func(resource: str, method: str, entity_type: str) -> Any:
+    """Look up the generated API function for a resource/method/entity_type combo."""
+    resource_map = _ENTITY_FUNC_MAP.get(resource)
+    if not resource_map:
+        raise SovdClientError(f"Unknown resource: {resource}")
+    method_map = resource_map.get(method)
+    if not method_map:
+        raise SovdClientError(f"Unknown method {method} for {resource}")
+    func = method_map.get(entity_type)
+    if not func:
+        raise SovdClientError(f"No API function for {entity_type}/{resource}/{method}")
+    return func.asyncio
+
+
+def _entity_id_kwarg(entity_type: str) -> str:
+    """Get the keyword argument name for entity ID based on type."""
+    return f"{entity_type.removesuffix('s')}_id"
+
+
 class SovdClient:
     """Async HTTP client for ros2_medkit SOVD API.
 
-    Manages HTTP connection lifecycle and provides typed methods
-    for each API endpoint.
+    Wraps the generated MedkitClient while preserving the interface
+    expected by mcp_app.py.
     """
 
     def __init__(self, settings: Settings) -> None:
-        """Initialize the client with settings.
-
-        Args:
-            settings: Application settings containing base URL, auth, timeout.
-        """
         self._settings = settings
-        self._client: httpx.AsyncClient | None = None
+        self._medkit: MedkitClient | None = None
+        self._entered = False
+        self._init_lock = asyncio.Lock()
 
-    def _build_headers(self) -> dict[str, str]:
-        """Build HTTP headers including authentication if configured.
+    async def _ensure_client(self) -> MedkitClient:
+        if self._medkit is not None:
+            return self._medkit
+        async with self._init_lock:
+            if self._medkit is None:
+                self._medkit = MedkitClient(
+                    base_url=self._settings.base_url,
+                    auth_token=self._settings.bearer_token,
+                    timeout=self._settings.timeout_seconds,
+                )
+                await self._medkit.__aenter__()
+                self._entered = True
+        return self._medkit
 
-        Returns:
-            Dictionary of HTTP headers.
-        """
-        headers: dict[str, str] = {
-            "Accept": "application/json",
-            "User-Agent": "ros2_medkit_mcp/0.1.0",
-        }
-        if self._settings.bearer_token:
-            headers["Authorization"] = f"Bearer {self._settings.bearer_token}"
-        return headers
+    async def _httpx_client(self) -> httpx.AsyncClient:
+        """Get the underlying httpx client for raw requests.
 
-    async def _ensure_client(self) -> httpx.AsyncClient:
-        """Ensure HTTP client is initialized.
-
-        Returns:
-            The initialized async HTTP client.
-        """
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                base_url=self._settings.base_url.rstrip("/"),
-                headers=self._build_headers(),
-                timeout=httpx.Timeout(self._settings.timeout_seconds),
-            )
-        return self._client
-
-    async def close(self) -> None:
-        """Close the HTTP client and release resources."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
-
-    def _extract_request_id(self, response: httpx.Response) -> str | None:
-        """Extract request ID from response headers.
-
-        Args:
-            response: HTTP response to inspect.
-
-        Returns:
-            Request ID if present, None otherwise.
-        """
-        for header in ("X-Request-ID", "X-Request-Id", "Request-Id", "request-id"):
-            if header in response.headers:
-                return response.headers[header]
-        return None
-
-    def _log_response(
-        self,
-        method: str,
-        path: str,
-        response: httpx.Response,
-        request_id: str | None,
-    ) -> None:
-        """Log HTTP response details.
-
-        Args:
-            method: HTTP method used.
-            path: Request path.
-            response: HTTP response received.
-            request_id: Request ID if present.
-        """
-        log_extra = {"status": response.status_code, "method": method, "path": path}
-        if request_id:
-            log_extra["request_id"] = request_id
-
-        if response.is_success:
-            logger.debug("HTTP request succeeded", extra=log_extra)
-        else:
-            logger.warning("HTTP request failed", extra=log_extra)
-
-    async def _request(
-        self,
-        method: str,
-        path: str,
-        params: dict[str, Any] | None = None,
-        json_body: dict[str, Any] | None = None,
-    ) -> Any:
-        """Make an HTTP request and return JSON response.
-
-        Args:
-            method: HTTP method (GET, POST, etc.).
-            path: API endpoint path.
-            params: Optional query parameters.
-            json_body: Optional JSON body for POST/PUT requests.
-
-        Returns:
-            Parsed JSON response.
-
-        Raises:
-            SovdClientError: If request fails or returns non-2xx status.
+        Used for endpoints not covered by the generated client
+        (fault snapshots, bulk-data HEAD/download).
         """
         client = await self._ensure_client()
+        return client.http.get_async_httpx_client()
 
+    async def close(self) -> None:
+        if self._medkit is not None and self._entered:
+            await self._medkit.__aexit__(None, None, None)
+            self._medkit = None
+            self._entered = False
+
+    async def _call(self, api_func: Any, **kwargs: Any) -> Any:
+        """Call a generated API function, converting errors to SovdClientError."""
+        client = await self._ensure_client()
         try:
-            response = await client.request(method, path, params=params, json=json_body)
-            request_id = self._extract_request_id(response)
-            self._log_response(method, path, response, request_id)
-
-            if not response.is_success:
-                error_msg = f"HTTP {response.status_code}: {response.text[:200]}"
-                raise SovdClientError(
-                    message=error_msg,
-                    status_code=response.status_code,
-                    request_id=request_id,
-                )
-
-            try:
-                return response.json()
-            except ValueError as e:
-                error_msg = "Invalid JSON in response body"
-                raise SovdClientError(
-                    message=error_msg,
-                    status_code=response.status_code,
-                    request_id=request_id,
-                ) from e
-
+            result = await client.call(api_func, **kwargs)
+            return _to_dict(result)
+        except MedkitError as e:
+            msg = f"[{e.code}] {e.message}" if e.code else str(e)
+            raise SovdClientError(message=msg, status_code=e.status) from e
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
         except httpx.RequestError as e:
-            logger.error("HTTP request error: %s", e)
             raise SovdClientError(message=f"Request failed: {e}") from e
 
-    async def get_version(self) -> dict[str, Any]:
-        """Get SOVD API version information.
+    async def _raw_request(self, method: str, path: str) -> Any:
+        """Make a raw HTTP request for endpoints not in the generated client
+        (fault snapshots). Path segments must be pre-encoded by the caller."""
+        try:
+            hc = await self._httpx_client()
+            response = await hc.request(method, path)
+            if not response.is_success:
+                raise SovdClientError(
+                    message=f"Gateway returned HTTP {response.status_code}",
+                    status_code=response.status_code,
+                )
+            return response.json()
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
 
-        Returns:
-            Version information as dictionary.
-        """
-        return await self._request("GET", "/version-info")
+    # ==================== Server ====================
+
+    async def get_version(self) -> dict[str, Any]:
+        return await self._call(server.get_version_info.asyncio)
 
     async def get_health(self) -> dict[str, Any]:
-        """Get health status of the gateway.
+        return await self._call(server.get_health.asyncio)
 
-        Returns:
-            Health status as dictionary.
-        """
-        return await self._request("GET", "/health")
+    # ==================== Discovery ====================
 
     async def list_entities(self) -> list[dict[str, Any]]:
-        """List all SOVD entities (areas, components, apps, and functions combined).
-
-        Returns:
-            List of entity dictionaries.
-        """
-        entities = []
-
-        # Fetch areas
-        try:
-            areas_result = await self._request("GET", "/areas")
-            if isinstance(areas_result, list):
-                entities.extend(areas_result)
-            elif isinstance(areas_result, dict):
-                if "areas" in areas_result:
-                    entities.extend(areas_result["areas"])
-                elif "items" in areas_result:
-                    entities.extend(areas_result["items"])
-        except SovdClientError:
-            pass  # Skip if areas endpoint fails
-
-        # Fetch components
-        try:
-            components_result = await self._request("GET", "/components")
-            if isinstance(components_result, list):
-                entities.extend(components_result)
-            elif isinstance(components_result, dict):
-                if "components" in components_result:
-                    entities.extend(components_result["components"])
-                elif "items" in components_result:
-                    entities.extend(components_result["items"])
-        except SovdClientError:
-            pass  # Skip if components endpoint fails
-
-        # Fetch apps
-        try:
-            apps_result = await self._request("GET", "/apps")
-            if isinstance(apps_result, list):
-                entities.extend(apps_result)
-            elif isinstance(apps_result, dict):
-                if "apps" in apps_result:
-                    entities.extend(apps_result["apps"])
-                elif "items" in apps_result:
-                    entities.extend(apps_result["items"])
-        except SovdClientError:
-            pass  # Skip if apps endpoint fails
-
-        # Fetch functions
-        try:
-            functions_result = await self._request("GET", "/functions")
-            if isinstance(functions_result, list):
-                entities.extend(functions_result)
-            elif isinstance(functions_result, dict):
-                if "functions" in functions_result:
-                    entities.extend(functions_result["functions"])
-                elif "items" in functions_result:
-                    entities.extend(functions_result["items"])
-        except SovdClientError:
-            pass  # Skip if functions endpoint fails
-
+        entities: list[dict[str, Any]] = []
+        for list_fn in (self.list_areas, self.list_components, self.list_apps, self.list_functions):
+            with suppress(SovdClientError):
+                entities.extend(await list_fn())
         return entities
 
     async def list_areas(self) -> list[dict[str, Any]]:
-        """List all SOVD areas.
-
-        Returns:
-            List of area dictionaries.
-        """
-        result = await self._request("GET", "/areas")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "areas" in result:
-            return result["areas"]
-        return [result] if result else []
+        return _extract_items(await self._call(discovery.list_areas.asyncio))
 
     async def get_area(self, area_id: str) -> dict[str, Any]:
-        """Get details of a specific area.
-
-        Args:
-            area_id: The area identifier.
-
-        Returns:
-            Area data dictionary.
-        """
-        result = await self._request("GET", f"/areas/{area_id}")
-        return result.get("item", result) if isinstance(result, dict) else result
+        return await self._call(discovery.get_area.asyncio, area_id=area_id)
 
     async def list_components(self) -> list[dict[str, Any]]:
-        """List all SOVD components.
-
-        Returns:
-            List of component dictionaries.
-        """
-        result = await self._request("GET", "/components")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict):
-            if "components" in result:
-                return result["components"]
-            if "items" in result:
-                return result["items"]
-        return [result] if result else []
+        return _extract_items(await self._call(discovery.list_components.asyncio))
 
     async def get_component(self, component_id: str) -> dict[str, Any]:
-        """Get details of a specific component.
-
-        Args:
-            component_id: The component identifier.
-
-        Returns:
-            Component data dictionary.
-        """
-        result = await self._request("GET", f"/components/{component_id}")
-        return result.get("item", result) if isinstance(result, dict) else result
+        return await self._call(discovery.get_component.asyncio, component_id=component_id)
 
     async def list_apps(self) -> list[dict[str, Any]]:
-        """List all SOVD apps (ROS 2 nodes).
-
-        Returns:
-            List of app dictionaries.
-        """
-        result = await self._request("GET", "/apps")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict):
-            if "apps" in result:
-                return result["apps"]
-            if "items" in result:
-                return result["items"]
-        return [result] if result else []
+        return _extract_items(await self._call(discovery.list_apps.asyncio))
 
     async def get_app(self, app_id: str) -> dict[str, Any]:
-        """Get app capabilities and details.
-
-        Args:
-            app_id: The app identifier.
-
-        Returns:
-            App data dictionary.
-        """
-        result = await self._request("GET", f"/apps/{app_id}")
-        return result.get("item", result) if isinstance(result, dict) else result
+        return await self._call(discovery.get_app.asyncio, app_id=app_id)
 
     async def list_app_dependencies(self, app_id: str) -> list[dict[str, Any]]:
-        """List dependencies for an app.
-
-        Args:
-            app_id: The app identifier.
-
-        Returns:
-            List of dependency dictionaries.
-        """
-        result = await self._request("GET", f"/apps/{app_id}/depends-on")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        return [result] if result else []
-
-    async def list_functions(self) -> list[dict[str, Any]]:
-        """List all SOVD functions.
-
-        Returns:
-            List of function dictionaries.
-        """
-        result = await self._request("GET", "/functions")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict):
-            if "functions" in result:
-                return result["functions"]
-            if "items" in result:
-                return result["items"]
-        return [result] if result else []
-
-    async def get_function(self, function_id: str) -> dict[str, Any]:
-        """Get function details.
-
-        Args:
-            function_id: The function identifier.
-
-        Returns:
-            Function data dictionary.
-        """
-        result = await self._request("GET", f"/functions/{function_id}")
-        return result.get("item", result) if isinstance(result, dict) else result
-
-    async def list_function_hosts(self, function_id: str) -> list[dict[str, Any]]:
-        """List apps that host a function.
-
-        Args:
-            function_id: The function identifier.
-
-        Returns:
-            List of host app dictionaries.
-        """
-        result = await self._request("GET", f"/functions/{function_id}/hosts")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        return [result] if result else []
-
-    async def get_entity(self, entity_id: str) -> dict[str, Any]:
-        """Get a specific entity by ID.
-
-        Searches through the list of all entities to find the one with matching ID.
-        For components, also attempts to fetch live data.
-
-        Args:
-            entity_id: The entity identifier (component or area ID).
-
-        Returns:
-            Entity data as dictionary.
-
-        Raises:
-            SovdClientError: If entity not found.
-        """
-        entities = await self.list_entities()
-
-        # Find the entity with matching ID
-        found_entity = None
-        for entity in entities:
-            if entity.get("id") == entity_id:
-                found_entity = entity
-                break
-
-        if not found_entity:
-            raise SovdClientError(
-                message=f"Entity '{entity_id}' not found",
-                status_code=404,
-            )
-
-        # If it's a component, try to fetch its live data
-        if found_entity.get("type") == "Component":
-            try:
-                # Use the fqn (fully qualified name) to fetch the component's namespace path
-                fqn = found_entity.get("fqn", "").lstrip("/")
-                if fqn:
-                    # Try to get component data - might need to use area path
-                    component_data = await self._request("GET", f"/components/{entity_id}/data")
-                    return {**found_entity, "data": component_data}
-            except SovdClientError:
-                pass  # Component doesn't expose data endpoint
-
-        return found_entity
-
-    async def list_faults(
-        self, entity_id: str, entity_type: str = "components"
-    ) -> list[dict[str, Any]]:
-        """List all faults for an entity.
-
-        Args:
-            entity_id: The entity identifier.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            List of fault dictionaries.
-        """
-        result = await self._request("GET", f"/{entity_type}/{entity_id}/faults")
-        if isinstance(result, list):
-            return result
-        # Handle case where response is wrapped in an object
-        if isinstance(result, dict):
-            if "faults" in result:
-                return result["faults"]
-            if "items" in result:
-                return result["items"]
-        return [result] if result else []
-
-    async def get_fault(
-        self, entity_id: str, fault_id: str, entity_type: str = "components"
-    ) -> dict[str, Any]:
-        """Get a specific fault by ID.
-
-        Args:
-            entity_id: The entity identifier.
-            fault_id: The fault identifier (fault code).
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Fault data dictionary.
-        """
-        return await self._request("GET", f"/{entity_type}/{entity_id}/faults/{fault_id}")
-
-    async def clear_fault(
-        self, entity_id: str, fault_id: str, entity_type: str = "components"
-    ) -> dict[str, Any]:
-        """Clear (acknowledge/dismiss) a fault.
-
-        Args:
-            entity_id: The entity identifier.
-            fault_id: The fault identifier to clear.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Response dictionary with clear status.
-        """
-        return await self._request("DELETE", f"/{entity_type}/{entity_id}/faults/{fault_id}")
-
-    async def clear_all_faults(
-        self, entity_id: str, entity_type: str = "components"
-    ) -> dict[str, Any]:
-        """Clear all faults for an entity.
-
-        Args:
-            entity_id: The entity identifier.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Response dictionary with clear status.
-        """
-        return await self._request("DELETE", f"/{entity_type}/{entity_id}/faults")
-
-    async def list_all_faults(self) -> list[dict[str, Any]]:
-        """List all faults across the entire system.
-
-        Returns:
-            List of all fault dictionaries.
-        """
-        result = await self._request("GET", "/faults")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict):
-            if "faults" in result:
-                return result["faults"]
-            if "items" in result:
-                return result["items"]
-        return [result] if result else []
-
-    async def get_fault_snapshots(
-        self, entity_id: str, fault_code: str, entity_type: str = "components"
-    ) -> dict[str, Any]:
-        """Get diagnostic snapshots for a fault.
-
-        Args:
-            entity_id: The entity identifier.
-            fault_code: The fault code.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Snapshot data dictionary.
-        """
-        return await self._request(
-            "GET", f"/{entity_type}/{entity_id}/faults/{fault_code}/snapshots"
+        return _extract_items(
+            await self._call(discovery.list_app_dependencies.asyncio, app_id=app_id)
         )
 
-    async def get_system_fault_snapshots(self, fault_code: str) -> dict[str, Any]:
-        """Get system-wide diagnostic snapshots for a fault.
+    async def list_functions(self) -> list[dict[str, Any]]:
+        return _extract_items(await self._call(discovery.list_functions.asyncio))
 
-        Args:
-            fault_code: The fault code.
+    async def get_function(self, function_id: str) -> dict[str, Any]:
+        return await self._call(discovery.get_function.asyncio, function_id=function_id)
 
-        Returns:
-            Snapshot data dictionary.
-        """
-        return await self._request("GET", f"/faults/{fault_code}/snapshots")
+    async def list_function_hosts(self, function_id: str) -> list[dict[str, Any]]:
+        return _extract_items(
+            await self._call(discovery.list_function_hosts.asyncio, function_id=function_id)
+        )
 
-    # ==================== Area Components ====================
+    async def get_entity(self, entity_id: str) -> dict[str, Any]:
+        entities = await self.list_entities()
+        for entity in entities:
+            if entity.get("id") == entity_id:
+                if entity.get("type") == "Component":
+                    try:
+                        component_data = await self.get_component_data(entity_id)
+                        return {**entity, "data": component_data}
+                    except SovdClientError:
+                        pass
+                return entity
+        raise SovdClientError(message=f"Entity '{entity_id}' not found", status_code=404)
+
+    # ==================== Area Relationships ====================
 
     async def list_area_components(self, area_id: str) -> list[dict[str, Any]]:
-        """List all components within a specific area.
-
-        Args:
-            area_id: The area identifier (e.g., 'powertrain', 'chassis', 'body').
-
-        Returns:
-            List of component dictionaries.
-        """
-        result = await self._request("GET", f"/areas/{area_id}/components")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        return [result] if result else []
+        return _extract_items(
+            await self._call(discovery.list_area_components.asyncio, area_id=area_id)
+        )
 
     async def list_area_subareas(self, area_id: str) -> list[dict[str, Any]]:
-        """List sub-areas within an area.
-
-        Args:
-            area_id: The area identifier.
-
-        Returns:
-            List of sub-area dictionaries.
-        """
-        result = await self._request("GET", f"/areas/{area_id}/subareas")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        return [result] if result else []
+        return _extract_items(await self._call(discovery.list_subareas.asyncio, area_id=area_id))
 
     async def list_area_contains(self, area_id: str) -> list[dict[str, Any]]:
-        """List all entities contained in an area.
-
-        Args:
-            area_id: The area identifier.
-
-        Returns:
-            List of contained entity dictionaries.
-        """
-        result = await self._request("GET", f"/areas/{area_id}/contains")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        return [result] if result else []
+        return _extract_items(
+            await self._call(discovery.list_area_contains.asyncio, area_id=area_id)
+        )
 
     # ==================== Component Relationships ====================
 
     async def list_component_subcomponents(self, component_id: str) -> list[dict[str, Any]]:
-        """List subcomponents of a component.
-
-        Args:
-            component_id: The component identifier.
-
-        Returns:
-            List of subcomponent dictionaries.
-        """
-        result = await self._request("GET", f"/components/{component_id}/subcomponents")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        return [result] if result else []
+        return _extract_items(
+            await self._call(discovery.list_subcomponents.asyncio, component_id=component_id)
+        )
 
     async def list_component_hosts(self, component_id: str) -> list[dict[str, Any]]:
-        """List apps hosted by a component.
-
-        Args:
-            component_id: The component identifier.
-
-        Returns:
-            List of hosted app dictionaries.
-        """
-        result = await self._request("GET", f"/components/{component_id}/hosts")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        return [result] if result else []
+        return _extract_items(
+            await self._call(discovery.list_component_hosts.asyncio, component_id=component_id)
+        )
 
     async def list_component_dependencies(self, component_id: str) -> list[dict[str, Any]]:
-        """List dependencies of a component.
+        return _extract_items(
+            await self._call(
+                discovery.list_component_dependencies.asyncio, component_id=component_id
+            )
+        )
 
-        Args:
-            component_id: The component identifier.
+    # ==================== Faults ====================
 
-        Returns:
-            List of dependency dictionaries.
-        """
-        result = await self._request("GET", f"/components/{component_id}/depends-on")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        return [result] if result else []
+    async def list_faults(
+        self, entity_id: str, entity_type: str = "components"
+    ) -> list[dict[str, Any]]:
+        fn = _entity_func("faults", "list", entity_type)
+        return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
 
-    # ==================== Component Data ====================
+    async def get_fault(
+        self, entity_id: str, fault_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("faults", "get", entity_type)
+        return await self._call(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "fault_code": fault_id}
+        )
+
+    async def clear_fault(
+        self, entity_id: str, fault_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("faults", "clear", entity_type)
+        return await self._call(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "fault_code": fault_id}
+        )
+
+    async def clear_all_faults(
+        self, entity_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("faults", "clear_all", entity_type)
+        return await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id})
+
+    async def list_all_faults(self) -> list[dict[str, Any]]:
+        return _extract_items(await self._call(faults.list_all_faults.asyncio))
+
+    async def get_fault_snapshots(
+        self, entity_id: str, fault_code: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        return await self._raw_request(
+            "GET",
+            f"/{quote(entity_type, safe='')}/{quote(entity_id, safe='')}"
+            f"/faults/{quote(fault_code, safe='')}/snapshots",
+        )
+
+    async def get_system_fault_snapshots(self, fault_code: str) -> dict[str, Any]:
+        return await self._raw_request("GET", f"/faults/{quote(fault_code, safe='')}/snapshots")
+
+    # ==================== Data ====================
 
     async def get_component_data(
         self, entity_id: str, entity_type: str = "components"
     ) -> list[dict[str, Any]]:
-        """Read all topic data from an entity.
-
-        Args:
-            entity_id: The entity identifier.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            List of topic data dictionaries.
-        """
-        result = await self._request("GET", f"/{entity_type}/{entity_id}/data")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        return [result] if result else []
+        fn = _entity_func("data", "list", entity_type)
+        return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
 
     async def get_component_topic_data(
         self, entity_id: str, topic_name: str, entity_type: str = "components"
     ) -> dict[str, Any]:
-        """Read data from a specific topic within an entity.
-
-        Args:
-            entity_id: The entity identifier.
-            topic_name: The topic name (e.g., 'temperature', 'rpm').
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Topic data dictionary.
-        """
-        return await self._request("GET", f"/{entity_type}/{entity_id}/data/{topic_name}")
+        fn = _entity_func("data", "get", entity_type)
+        return await self._call(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "data_id": topic_name}
+        )
 
     async def publish_to_topic(
         self,
@@ -685,56 +492,28 @@ class SovdClient:
         data: dict[str, Any],
         entity_type: str = "components",
     ) -> dict[str, Any]:
-        """Publish data to an entity's topic.
-
-        Args:
-            entity_id: The entity identifier.
-            topic_name: The topic name to publish to.
-            data: The message data to publish.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Response dictionary with publish status.
-        """
-        return await self._request(
-            "PUT", f"/{entity_type}/{entity_id}/data/{topic_name}", json_body=data
+        fn = _entity_func("data", "put", entity_type)
+        return await self._call(
+            fn,
+            **{_entity_id_kwarg(entity_type): entity_id, "data_id": topic_name, "body": data},
         )
 
-    # ==================== Operations (Services & Actions) ====================
+    # ==================== Operations ====================
 
     async def list_operations(
         self, entity_id: str, entity_type: str = "components"
     ) -> list[dict[str, Any]]:
-        """List all operations (services and actions) for an entity.
-
-        Args:
-            entity_id: The entity identifier.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            List of operation dictionaries.
-        """
-        result = await self._request("GET", f"/{entity_type}/{entity_id}/operations")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        return [result] if result else []
+        fn = _entity_func("operations", "list", entity_type)
+        return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
 
     async def get_operation(
         self, entity_id: str, operation_name: str, entity_type: str = "components"
     ) -> dict[str, Any]:
-        """Get details of a specific operation.
-
-        Args:
-            entity_id: The entity identifier.
-            operation_name: The operation name.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Operation details dictionary.
-        """
-        return await self._request("GET", f"/{entity_type}/{entity_id}/operations/{operation_name}")
+        fn = _entity_func("operations", "get", entity_type)
+        return await self._call(
+            fn,
+            **{_entity_id_kwarg(entity_type): entity_id, "operation_id": operation_name},
+        )
 
     async def create_execution(
         self,
@@ -743,47 +522,25 @@ class SovdClient:
         request_data: dict[str, Any] | None = None,
         entity_type: str = "components",
     ) -> dict[str, Any]:
-        """Start an execution for an operation (service call or action goal).
-
-        Args:
-            entity_id: The entity identifier.
-            operation_name: The operation name (service or action).
-            request_data: Optional request data (goal for actions, request for services).
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Response dictionary with execution_id for actions, or result for services.
-        """
-        body: dict[str, Any] = {}
+        fn = _entity_func("operations", "execute", entity_type)
+        kwargs: dict[str, Any] = {
+            _entity_id_kwarg(entity_type): entity_id,
+            "operation_id": operation_name,
+        }
         if request_data:
-            body["parameters"] = request_data  # SOVD uses 'parameters' field
-        return await self._request(
-            "POST",
-            f"/{entity_type}/{entity_id}/operations/{operation_name}/executions",
-            json_body=body if body else None,
-        )
+            kwargs["body"] = {"parameters": request_data}
+        return await self._call(fn, **kwargs)
 
     async def list_executions(
         self, entity_id: str, operation_name: str, entity_type: str = "components"
     ) -> list[dict[str, Any]]:
-        """List all executions for an operation.
-
-        Args:
-            entity_id: The entity identifier.
-            operation_name: The operation name.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            List of execution dictionaries.
-        """
-        result = await self._request(
-            "GET", f"/{entity_type}/{entity_id}/operations/{operation_name}/executions"
+        fn = _entity_func("operations", "list_executions", entity_type)
+        return _extract_items(
+            await self._call(
+                fn,
+                **{_entity_id_kwarg(entity_type): entity_id, "operation_id": operation_name},
+            )
         )
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        return [result] if result else []
 
     async def get_execution(
         self,
@@ -792,20 +549,14 @@ class SovdClient:
         execution_id: str,
         entity_type: str = "components",
     ) -> dict[str, Any]:
-        """Get execution status and feedback.
-
-        Args:
-            entity_id: The entity identifier.
-            operation_name: The operation name.
-            execution_id: The execution identifier.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Execution status dictionary.
-        """
-        return await self._request(
-            "GET",
-            f"/{entity_type}/{entity_id}/operations/{operation_name}/executions/{execution_id}",
+        fn = _entity_func("operations", "get_execution", entity_type)
+        return await self._call(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "operation_id": operation_name,
+                "execution_id": execution_id,
+            },
         )
 
     async def update_execution(
@@ -816,22 +567,15 @@ class SovdClient:
         update_data: dict[str, Any],
         entity_type: str = "components",
     ) -> dict[str, Any]:
-        """Update an execution (e.g., stop capability).
-
-        Args:
-            entity_id: The entity identifier.
-            operation_name: The operation name.
-            execution_id: The execution identifier.
-            update_data: Update data (e.g., {"stop": True}).
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Updated execution dictionary.
-        """
-        return await self._request(
-            "PUT",
-            f"/{entity_type}/{entity_id}/operations/{operation_name}/executions/{execution_id}",
-            json_body=update_data,
+        fn = _entity_func("operations", "update_execution", entity_type)
+        return await self._call(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "operation_id": operation_name,
+                "execution_id": execution_id,
+                "body": update_data,
+            },
         )
 
     async def cancel_execution(
@@ -841,127 +585,68 @@ class SovdClient:
         execution_id: str,
         entity_type: str = "components",
     ) -> dict[str, Any]:
-        """Cancel a specific execution.
-
-        Args:
-            entity_id: The entity identifier.
-            operation_name: The operation name.
-            execution_id: The execution identifier.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Cancellation response dictionary.
-        """
-        return await self._request(
-            "DELETE",
-            f"/{entity_type}/{entity_id}/operations/{operation_name}/executions/{execution_id}",
+        fn = _entity_func("operations", "cancel_execution", entity_type)
+        return await self._call(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "operation_id": operation_name,
+                "execution_id": execution_id,
+            },
         )
 
-    # ==================== Configurations (ROS 2 Parameters) ====================
+    # ==================== Configurations ====================
 
     async def list_configurations(
         self, entity_id: str, entity_type: str = "components"
     ) -> list[dict[str, Any]]:
-        """List all configurations (parameters) for an entity.
-
-        Args:
-            entity_id: The entity identifier.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            List of configuration dictionaries.
-        """
-        result = await self._request("GET", f"/{entity_type}/{entity_id}/configurations")
-        if isinstance(result, list):
-            return result
-        if isinstance(result, dict):
-            if "configurations" in result:
-                return result["configurations"]
-            if "items" in result:
-                return result["items"]
-        return [result] if result else []
+        fn = _entity_func("configurations", "list", entity_type)
+        return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
 
     async def get_configuration(
         self, entity_id: str, param_name: str, entity_type: str = "components"
     ) -> dict[str, Any]:
-        """Get a specific configuration (parameter) value.
-
-        Args:
-            entity_id: The entity identifier.
-            param_name: The parameter name.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Configuration value dictionary.
-        """
-        return await self._request("GET", f"/{entity_type}/{entity_id}/configurations/{param_name}")
+        fn = _entity_func("configurations", "get", entity_type)
+        return await self._call(
+            fn,
+            **{_entity_id_kwarg(entity_type): entity_id, "config_id": param_name},
+        )
 
     async def set_configuration(
         self, entity_id: str, param_name: str, value: Any, entity_type: str = "components"
     ) -> dict[str, Any]:
-        """Set a configuration (parameter) value.
-
-        Args:
-            entity_id: The entity identifier.
-            param_name: The parameter name.
-            value: The new parameter value.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Response dictionary with set status.
-        """
-        return await self._request(
-            "PUT",
-            f"/{entity_type}/{entity_id}/configurations/{param_name}",
-            json_body={"value": value},
+        fn = _entity_func("configurations", "set", entity_type)
+        return await self._call(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "config_id": param_name,
+                "body": {"data": value},
+            },
         )
 
     async def delete_configuration(
         self, entity_id: str, param_name: str, entity_type: str = "components"
     ) -> dict[str, Any]:
-        """Reset a configuration (parameter) to its default value.
-
-        Args:
-            entity_id: The entity identifier.
-            param_name: The parameter name.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Response dictionary.
-        """
-        return await self._request(
-            "DELETE", f"/{entity_type}/{entity_id}/configurations/{param_name}"
+        fn = _entity_func("configurations", "delete", entity_type)
+        return await self._call(
+            fn,
+            **{_entity_id_kwarg(entity_type): entity_id, "config_id": param_name},
         )
 
     async def delete_all_configurations(
         self, entity_id: str, entity_type: str = "components"
     ) -> dict[str, Any]:
-        """Reset all configurations (parameters) to their default values.
-
-        Args:
-            entity_id: The entity identifier.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            Response dictionary.
-        """
-        return await self._request("DELETE", f"/{entity_type}/{entity_id}/configurations")
+        fn = _entity_func("configurations", "delete_all", entity_type)
+        return await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id})
 
     # ==================== Bulk Data ====================
 
     async def list_bulk_data_categories(
         self, entity_id: str, entity_type: str = "apps"
     ) -> list[str]:
-        """List available bulk-data categories for an entity.
-
-        Args:
-            entity_id: The entity identifier.
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            List of category names (e.g., ['rosbags', 'logs']).
-        """
-        result = await self._request("GET", f"/{entity_type}/{entity_id}/bulk-data")
+        fn = _entity_func("bulk_data", "list_categories", entity_type)
+        result = await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id})
         if isinstance(result, dict) and "items" in result:
             return result["items"]
         if isinstance(result, list):
@@ -971,34 +656,22 @@ class SovdClient:
     async def list_bulk_data(
         self, entity_id: str, category: str, entity_type: str = "apps"
     ) -> list[dict[str, Any]]:
-        """List bulk-data items in a category.
-
-        Args:
-            entity_id: The entity identifier.
-            category: Category name (e.g., 'rosbags').
-            entity_type: Entity type ('components', 'apps', 'areas', 'functions').
-
-        Returns:
-            List of bulk data item dictionaries.
-        """
-        result = await self._request("GET", f"/{entity_type}/{entity_id}/bulk-data/{category}")
-        if isinstance(result, dict) and "items" in result:
-            return result["items"]
-        if isinstance(result, list):
-            return result
-        return []
+        fn = _entity_func("bulk_data", "list", entity_type)
+        return _extract_items(
+            await self._call(
+                fn,
+                **{_entity_id_kwarg(entity_type): entity_id, "category_id": category},
+            )
+        )
 
     async def get_bulk_data_info(self, bulk_data_uri: str) -> dict[str, Any]:
-        """Get metadata about a bulk-data item via HEAD request.
-
-        Args:
-            bulk_data_uri: Full bulk-data URI path.
-
-        Returns:
-            Dictionary with Content-Type, Content-Length, filename.
-        """
-        client = await self._ensure_client()
-        response = await client.head(bulk_data_uri)
+        """Get metadata about a bulk-data item via HEAD request."""
+        _validate_relative_uri(bulk_data_uri)
+        hc = await self._httpx_client()
+        try:
+            response = await hc.head(bulk_data_uri)
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
 
         if not response.is_success:
             raise SovdClientError(
@@ -1006,41 +679,21 @@ class SovdClient:
                 status_code=response.status_code,
             )
 
-        headers = response.headers
-        content_disposition = headers.get("Content-Disposition", "")
-        filename = None
-        if "filename=" in content_disposition:
-            import re
-
-            match = re.search(r'filename="?([^"]+)"?', content_disposition)
-            if match:
-                filename = match.group(1)
-
         return {
-            "content_type": headers.get("Content-Type", "application/octet-stream"),
-            "content_length": headers.get("Content-Length"),
-            "filename": filename,
+            "content_type": response.headers.get("Content-Type", "application/octet-stream"),
+            "content_length": response.headers.get("Content-Length"),
+            "filename": _extract_filename(response.headers.get("Content-Disposition", "")),
             "uri": bulk_data_uri,
         }
 
     async def download_bulk_data(self, bulk_data_uri: str) -> tuple[bytes, str | None]:
-        """Download a bulk-data file.
-
-        Args:
-            bulk_data_uri: Relative bulk-data URI path (must start with /).
-
-        Returns:
-            Tuple of (file_content, filename).
-
-        Raises:
-            ValueError: If the URI is an absolute URL (SSRF protection).
-        """
-        # SSRF protection: reject absolute URLs - only allow relative paths
-        if bulk_data_uri.startswith(("http://", "https://", "//")):
-            raise ValueError(f"Absolute URLs not allowed for bulk data download: {bulk_data_uri}")
-
-        client = await self._ensure_client()
-        response = await client.get(bulk_data_uri, timeout=httpx.Timeout(300.0))
+        """Download a bulk-data file."""
+        _validate_relative_uri(bulk_data_uri)
+        hc = await self._httpx_client()
+        try:
+            response = await hc.get(bulk_data_uri, timeout=httpx.Timeout(300.0))
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
 
         if not response.is_success:
             raise SovdClientError(
@@ -1048,28 +701,12 @@ class SovdClient:
                 status_code=response.status_code,
             )
 
-        content_disposition = response.headers.get("Content-Disposition", "")
-        filename = None
-        if "filename=" in content_disposition:
-            import re
-
-            match = re.search(r'filename="?([^"]+)"?', content_disposition)
-            if match:
-                filename = match.group(1)
-
-        return response.content, filename
+        return response.content, _extract_filename(response.headers.get("Content-Disposition", ""))
 
 
 @asynccontextmanager
 async def create_client(settings: Settings) -> AsyncIterator[SovdClient]:
-    """Create and manage SOVD client lifecycle.
-
-    Args:
-        settings: Application settings.
-
-    Yields:
-        Initialized SOVD client.
-    """
+    """Create and manage SOVD client lifecycle."""
     client = SovdClient(settings)
     try:
         yield client

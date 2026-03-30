@@ -14,6 +14,7 @@ httpx = "^0.28.0"
 pydantic = "^2.10.0"
 uvicorn = { version = "^0.34.0", extras = ["standard"] }
 starlette = "^0.45.0"
+ros2-medkit-client = {url = "https://github.com/selfpatch/ros2_medkit_clients/releases/download/py-v0.1.0/ros2_medkit_client-0.1.0-py3-none-any.whl"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"

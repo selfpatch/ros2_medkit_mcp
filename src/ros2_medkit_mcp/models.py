@@ -434,7 +434,11 @@ class FaultStatus(str, Enum):
 class FaultItem(BaseModel):
     """Fault item model per SOVD specification."""
 
-    code: str = Field(..., description="Fault code (DTC)")
+    code: str = Field(
+        ...,
+        alias="fault_code",
+        description="Fault code (DTC)",
+    )
     fault_name: str | None = Field(
         default=None,
         alias="faultName",
