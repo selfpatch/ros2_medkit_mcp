@@ -91,7 +91,7 @@ def _extract_filename(content_disposition: str) -> str | None:
 def _validate_relative_uri(uri: str) -> None:
     """Reject absolute URLs to prevent SSRF."""
     if uri.startswith(("http://", "https://", "//")):
-        raise ValueError(f"Absolute URLs not allowed: {uri}")
+        raise SovdClientError(f"Absolute URLs not allowed: {uri}")
 
 
 # Mapping of (entity_type, resource, method) -> generated function name
@@ -310,6 +310,8 @@ class SovdClient:
             raise SovdClientError(message=f"Request timed out: {e}") from e
         except httpx.RequestError as e:
             raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
 
     async def _raw_request(self, method: str, path: str) -> Any:
         """Make a raw HTTP request for endpoints not in the generated client
@@ -322,7 +324,13 @@ class SovdClient:
                     message=f"Gateway returned HTTP {response.status_code}",
                     status_code=response.status_code,
                 )
-            return response.json()
+            try:
+                return response.json()
+            except ValueError as e:
+                raise SovdClientError(
+                    message="Failed to decode JSON response from gateway",
+                    status_code=response.status_code,
+                ) from e
         except httpx.RequestError as e:
             raise SovdClientError(message=f"Request failed: {e}") from e
 
