@@ -1250,7 +1250,7 @@ optional = false
 python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "ros2_medkit_client-0.1.0-py3-none-any.whl", hash = "sha256:49c60c0070f90d6272ebd16236a5fb0acce470e4cdf5f5fb811ac14f6d483c14"},
+    {file = "ros2_medkit_client-0.1.0-py3-none-any.whl", hash = "sha256:457d7738577d8b5639056e4578aab4d4696f17e0eb50b88ea6866706a02cc934"},
 ]
 
 [package.dependencies]
