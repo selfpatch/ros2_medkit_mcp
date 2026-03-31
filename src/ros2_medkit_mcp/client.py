@@ -29,6 +29,7 @@ from ros2_medkit_client.api import (
     operations,
     scripts,
     server,
+    subscriptions,
     triggers,
 )
 
@@ -356,6 +357,33 @@ _ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
         "release": {
             "components": locking.release_component_lock,
             "apps": locking.release_app_lock,
+        },
+    },
+    "subscriptions": {
+        "create": {
+            "components": subscriptions.create_component_subscription,
+            "apps": subscriptions.create_app_subscription,
+            "functions": subscriptions.create_function_subscription,
+        },
+        "list": {
+            "components": subscriptions.list_component_subscriptions,
+            "apps": subscriptions.list_app_subscriptions,
+            "functions": subscriptions.list_function_subscriptions,
+        },
+        "get": {
+            "components": subscriptions.get_component_subscription,
+            "apps": subscriptions.get_app_subscription,
+            "functions": subscriptions.get_function_subscription,
+        },
+        "update": {
+            "components": subscriptions.update_component_subscription,
+            "apps": subscriptions.update_app_subscription,
+            "functions": subscriptions.update_function_subscription,
+        },
+        "delete": {
+            "components": subscriptions.delete_component_subscription,
+            "apps": subscriptions.delete_app_subscription,
+            "functions": subscriptions.delete_function_subscription,
         },
     },
 }
@@ -1130,6 +1158,77 @@ class SovdClient:
             result = await fn(
                 client=client.http,
                 **{_entity_id_kwarg(entity_type): entity_id, "lock_id": lock_id},
+            )
+            if result is None:
+                return {}
+            return _to_dict(result)
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+
+    # ==================== Cyclic Subscriptions ====================
+
+    async def create_cyclic_subscription(
+        self,
+        entity_id: str,
+        sub_config: dict[str, Any],
+        entity_type: str = "components",
+    ) -> dict[str, Any]:
+        fn = _entity_func("subscriptions", "create", entity_type)
+        return await self._call(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "body": sub_config}
+        )
+
+    async def list_cyclic_subscriptions(
+        self, entity_id: str, entity_type: str = "components"
+    ) -> list[dict[str, Any]]:
+        fn = _entity_func("subscriptions", "list", entity_type)
+        return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
+
+    async def get_cyclic_subscription(
+        self, entity_id: str, subscription_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("subscriptions", "get", entity_type)
+        return await self._call(
+            fn,
+            **{_entity_id_kwarg(entity_type): entity_id, "subscription_id": subscription_id},
+        )
+
+    async def update_cyclic_subscription(
+        self,
+        entity_id: str,
+        subscription_id: str,
+        sub_config: dict[str, Any],
+        entity_type: str = "components",
+    ) -> dict[str, Any]:
+        fn = _entity_func("subscriptions", "update", entity_type)
+        return await self._call(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "subscription_id": subscription_id,
+                "body": sub_config,
+            },
+        )
+
+    async def delete_cyclic_subscription(
+        self, entity_id: str, subscription_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("subscriptions", "delete", entity_type)
+        # delete_subscription returns 204 No Content on success.
+        # The generated client returns None for 204, which MedkitClient.call()
+        # treats as an error. Call the function directly and treat None as success.
+        client = await self._ensure_client()
+        try:
+            result = await fn(
+                client=client.http,
+                **{
+                    _entity_id_kwarg(entity_type): entity_id,
+                    "subscription_id": subscription_id,
+                },
             )
             if result is None:
                 return {}

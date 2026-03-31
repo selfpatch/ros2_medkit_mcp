@@ -30,6 +30,7 @@ from ros2_medkit_mcp.models import (
     ComponentHostsArgs,
     ComponentIdArgs,
     ControlScriptExecutionArgs,
+    CreateCyclicSubArgs,
     CreateExecutionArgs,
     CreateTriggerArgs,
     DependenciesArgs,
@@ -49,6 +50,7 @@ from ros2_medkit_mcp.models import (
     FreezeFrameSnapshot,
     FunctionIdArgs,
     GetConfigurationArgs,
+    GetCyclicSubArgs,
     GetLockArgs,
     GetLogConfigurationArgs,
     GetOperationArgs,
@@ -56,6 +58,7 @@ from ros2_medkit_mcp.models import (
     GetScriptExecutionArgs,
     GetTriggerArgs,
     ListConfigurationsArgs,
+    ListCyclicSubsArgs,
     ListExecutionsArgs,
     ListLocksArgs,
     ListLogsArgs,
@@ -70,6 +73,7 @@ from ros2_medkit_mcp.models import (
     SubcomponentsArgs,
     SystemFaultSnapshotsArgs,
     ToolResult,
+    UpdateCyclicSubArgs,
     UpdateExecutionArgs,
     UpdateTriggerArgs,
     UploadScriptArgs,
@@ -669,6 +673,12 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_get_lock": "sovd_get_lock",
     "sovd_extend_lock": "sovd_extend_lock",
     "sovd_release_lock": "sovd_release_lock",
+    # Cyclic Subscriptions
+    "sovd_create_cyclic_sub": "sovd_create_cyclic_sub",
+    "sovd_list_cyclic_subs": "sovd_list_cyclic_subs",
+    "sovd_get_cyclic_sub": "sovd_get_cyclic_sub",
+    "sovd_update_cyclic_sub": "sovd_update_cyclic_sub",
+    "sovd_delete_cyclic_sub": "sovd_delete_cyclic_sub",
 }
 
 
@@ -1982,6 +1992,122 @@ def register_tools(
                     "required": ["entity_id", "lock_id"],
                 },
             ),
+            # ==================== Cyclic Subscriptions ====================
+            Tool(
+                name="sovd_create_cyclic_sub",
+                description="Create a cyclic data subscription for an entity. Subscribes to periodic data updates.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "sub_config": {
+                            "type": "object",
+                            "description": "Subscription configuration (e.g., {'resource': '/data/temperature', 'period': 1000})",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "sub_config"],
+                },
+            ),
+            Tool(
+                name="sovd_list_cyclic_subs",
+                description="List all cyclic subscriptions for an entity.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id"],
+                },
+            ),
+            Tool(
+                name="sovd_get_cyclic_sub",
+                description="Get details of a specific cyclic subscription.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "subscription_id": {
+                            "type": "string",
+                            "description": "The subscription identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "subscription_id"],
+                },
+            ),
+            Tool(
+                name="sovd_update_cyclic_sub",
+                description="Update a cyclic subscription's configuration.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "subscription_id": {
+                            "type": "string",
+                            "description": "The subscription identifier",
+                        },
+                        "sub_config": {
+                            "type": "object",
+                            "description": "Updated subscription configuration",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "subscription_id", "sub_config"],
+                },
+            ),
+            Tool(
+                name="sovd_delete_cyclic_sub",
+                description="Delete a cyclic subscription.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "subscription_id": {
+                            "type": "string",
+                            "description": "The subscription identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "subscription_id"],
+                },
+            ),
         ]
         # Append plugin tools
         if plugins:
@@ -2435,6 +2561,41 @@ def register_tools(
             elif normalized_name == "sovd_release_lock":
                 args = GetLockArgs(**arguments)
                 result = await client.release_lock(args.entity_id, args.lock_id, args.entity_type)
+                return format_json_response(result)
+
+            # ==================== Cyclic Subscriptions ====================
+
+            elif normalized_name == "sovd_create_cyclic_sub":
+                args = CreateCyclicSubArgs(**arguments)
+                result = await client.create_cyclic_subscription(
+                    args.entity_id, args.sub_config, args.entity_type
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_list_cyclic_subs":
+                args = ListCyclicSubsArgs(**arguments)
+                result = await client.list_cyclic_subscriptions(args.entity_id, args.entity_type)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_get_cyclic_sub":
+                args = GetCyclicSubArgs(**arguments)
+                result = await client.get_cyclic_subscription(
+                    args.entity_id, args.subscription_id, args.entity_type
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_update_cyclic_sub":
+                args = UpdateCyclicSubArgs(**arguments)
+                result = await client.update_cyclic_subscription(
+                    args.entity_id, args.subscription_id, args.sub_config, args.entity_type
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_delete_cyclic_sub":
+                args = GetCyclicSubArgs(**arguments)
+                result = await client.delete_cyclic_subscription(
+                    args.entity_id, args.subscription_id, args.entity_type
+                )
                 return format_json_response(result)
 
             else:
