@@ -521,3 +521,104 @@ class TestUpdatesTools:
         )
         assert result == {}
         await client.close()
+
+
+class TestDataDiscoveryTools:
+    """Tests for data discovery tools (categories and groups)."""
+
+    @respx.mock
+    async def test_list_data_categories(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/data-categories").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": ["topics", "parameters"]},
+            )
+        )
+        result = await client.list_data_categories("motor")
+        assert result == ["topics", "parameters"]
+        await client.close()
+
+    @respx.mock
+    async def test_list_data_categories_apps(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/apps/my_node/data-categories").mock(
+            return_value=httpx.Response(200, json={"items": ["topics"]})
+        )
+        result = await client.list_data_categories("my_node", "apps")
+        assert result == ["topics"]
+        await client.close()
+
+    @respx.mock
+    async def test_list_data_groups(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/data-groups").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [{"id": "sensor_data", "name": "Sensor Data"}]},
+            )
+        )
+        result = await client.list_data_groups("motor")
+        assert len(result) == 1
+        assert result[0]["id"] == "sensor_data"
+        await client.close()
+
+    @respx.mock
+    async def test_list_data_groups_apps(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/apps/my_node/data-groups").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        result = await client.list_data_groups("my_node", "apps")
+        assert result == []
+        await client.close()
+
+
+class TestBulkDataUploadDeleteTools:
+    """Tests for bulk data upload and delete tools."""
+
+    @respx.mock
+    async def test_delete_bulk_data_item(self, client: SovdClient) -> None:
+        respx.delete("http://test-sovd:8080/api/v1/apps/motor/bulk-data/rosbags/item-123").mock(
+            return_value=httpx.Response(204)
+        )
+        result = await client.delete_bulk_data_item("motor", "rosbags", "item-123")
+        assert result == {}
+        await client.close()
+
+    @respx.mock
+    async def test_delete_bulk_data_item_components(self, client: SovdClient) -> None:
+        respx.delete(
+            "http://test-sovd:8080/api/v1/components/motor/bulk-data/rosbags/item-456"
+        ).mock(return_value=httpx.Response(204))
+        result = await client.delete_bulk_data_item("motor", "rosbags", "item-456", "components")
+        assert result == {}
+        await client.close()
+
+    @respx.mock
+    async def test_upload_bulk_data(self, client: SovdClient) -> None:
+        respx.post("http://test-sovd:8080/api/v1/apps/motor/bulk-data/rosbags").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": "uploaded-1",
+                    "name": "test.mcap",
+                    "mimetype": "application/x-mcap",
+                    "size": 42,
+                },
+            )
+        )
+        result = await client.upload_bulk_data("motor", "rosbags", b"fake-content", "test.mcap")
+        assert result["id"] == "uploaded-1"
+        assert result["name"] == "test.mcap"
+        await client.close()
+
+    @respx.mock
+    async def test_upload_bulk_data_components(self, client: SovdClient) -> None:
+        respx.post("http://test-sovd:8080/api/v1/components/motor/bulk-data/rosbags").mock(
+            return_value=httpx.Response(
+                201,
+                json={"id": "uploaded-2", "name": "data.bin"},
+            )
+        )
+        result = await client.upload_bulk_data(
+            "motor", "rosbags", b"binary-data", "data.bin", "components"
+        )
+        assert result["id"] == "uploaded-2"
+        await client.close()

@@ -242,6 +242,22 @@ _ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
             "functions": configuration.delete_all_function_configurations,
         },
     },
+    "data_categories": {
+        "list": {
+            "components": data.list_component_data_categories,
+            "apps": data.list_app_data_categories,
+            "areas": data.list_area_data_categories,
+            "functions": data.list_function_data_categories,
+        },
+    },
+    "data_groups": {
+        "list": {
+            "components": data.list_component_data_groups,
+            "apps": data.list_app_data_groups,
+            "areas": data.list_area_data_groups,
+            "functions": data.list_function_data_groups,
+        },
+    },
     "bulk_data": {
         "list_categories": {
             "components": bulk_data.list_component_bulk_data_categories,
@@ -254,6 +270,14 @@ _ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
             "apps": bulk_data.list_app_bulk_data_descriptors,
             "areas": bulk_data.list_area_bulk_data_descriptors,
             "functions": bulk_data.list_function_bulk_data_descriptors,
+        },
+        "delete": {
+            "components": bulk_data.delete_component_bulk_data,
+            "apps": bulk_data.delete_app_bulk_data,
+        },
+        "upload": {
+            "components": bulk_data.upload_component_bulk_data,
+            "apps": bulk_data.upload_app_bulk_data,
         },
     },
     "logs": {
@@ -819,6 +843,20 @@ class SovdClient:
         fn = _entity_func("configurations", "delete_all", entity_type)
         return await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id})
 
+    # ==================== Data Discovery ====================
+
+    async def list_data_categories(
+        self, entity_id: str, entity_type: str = "components"
+    ) -> list[dict[str, Any]]:
+        fn = _entity_func("data_categories", "list", entity_type)
+        return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
+
+    async def list_data_groups(
+        self, entity_id: str, entity_type: str = "components"
+    ) -> list[dict[str, Any]]:
+        fn = _entity_func("data_groups", "list", entity_type)
+        return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
+
     # ==================== Bulk Data ====================
 
     async def list_bulk_data_categories(
@@ -881,6 +919,76 @@ class SovdClient:
             )
 
         return response.content, _extract_filename(response.headers.get("Content-Disposition", ""))
+
+    async def delete_bulk_data_item(
+        self,
+        entity_id: str,
+        category: str,
+        item_id: str,
+        entity_type: str = "apps",
+    ) -> dict[str, Any]:
+        fn = _entity_func("bulk_data", "delete", entity_type)
+        # delete returns 204 No Content on success.
+        # The generated client returns None for 204, which MedkitClient.call()
+        # treats as an error. Call the function directly and treat None as success.
+        client = await self._ensure_client()
+        try:
+            result = await fn(
+                client=client.http,
+                **{
+                    _entity_id_kwarg(entity_type): entity_id,
+                    "category_id": category,
+                    "file_id": item_id,
+                },
+            )
+            if result is None:
+                return {}
+            return _to_dict(result)
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+
+    async def upload_bulk_data(
+        self,
+        entity_id: str,
+        category: str,
+        file_content: bytes,
+        filename: str,
+        entity_type: str = "apps",
+    ) -> dict[str, Any]:
+        fn = _entity_func("bulk_data", "upload", entity_type)
+        # upload expects a File object (binary upload), not a dict body.
+        import io
+
+        from ros2_medkit_client._generated.types import File
+
+        file_obj = File(
+            payload=io.BytesIO(file_content),
+            file_name=filename,
+            mime_type="application/octet-stream",
+        )
+        client = await self._ensure_client()
+        try:
+            result = await fn(
+                client=client.http,
+                **{
+                    _entity_id_kwarg(entity_type): entity_id,
+                    "category_id": category,
+                    "body": file_obj,
+                },
+            )
+            if result is None:
+                return {}
+            return _to_dict(result)
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
 
     # ==================== Logs ====================
 

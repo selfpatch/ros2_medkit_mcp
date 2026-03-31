@@ -22,11 +22,13 @@ from ros2_medkit_mcp.models import (
     AreaIdArgs,
     AutomateUpdateArgs,
     BulkDataCategoriesArgs,
+    BulkDataDeleteArgs,
     BulkDataDownloadArgs,
     BulkDataDownloadForFaultArgs,
     BulkDataInfoArgs,
     BulkDataItem,
     BulkDataListArgs,
+    BulkDataUploadArgs,
     ClearAllFaultsArgs,
     ComponentHostsArgs,
     ComponentIdArgs,
@@ -34,6 +36,8 @@ from ros2_medkit_mcp.models import (
     CreateCyclicSubArgs,
     CreateExecutionArgs,
     CreateTriggerArgs,
+    DataCategoriesArgs,
+    DataGroupsArgs,
     DependenciesArgs,
     EntitiesListArgs,
     EntityDataArgs,
@@ -651,12 +655,17 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_clear_all_faults": "sovd_clear_all_faults",
     "sovd_fault_snapshots": "sovd_fault_snapshots",
     "sovd_system_fault_snapshots": "sovd_system_fault_snapshots",
+    # Data discovery
+    "sovd_data_categories": "sovd_data_categories",
+    "sovd_data_groups": "sovd_data_groups",
     # Bulk data
     "sovd_bulkdata_categories": "sovd_bulkdata_categories",
     "sovd_bulkdata_list": "sovd_bulkdata_list",
     "sovd_bulkdata_info": "sovd_bulkdata_info",
     "sovd_bulkdata_download": "sovd_bulkdata_download",
     "sovd_bulkdata_download_for_fault": "sovd_bulkdata_download_for_fault",
+    "sovd_bulkdata_upload": "sovd_bulkdata_upload",
+    "sovd_bulkdata_delete": "sovd_bulkdata_delete",
     # Logs
     "sovd_list_logs": "sovd_list_logs",
     "sovd_get_log_configuration": "sovd_get_log_configuration",
@@ -1459,6 +1468,45 @@ def register_tools(
                     "required": ["entity_id"],
                 },
             ),
+            # ==================== Data Discovery ====================
+            Tool(
+                name="sovd_data_categories",
+                description="List data categories for an entity (e.g., topics, parameters).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id"],
+                },
+            ),
+            Tool(
+                name="sovd_data_groups",
+                description="List data groups for an entity.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id"],
+                },
+            ),
             # ==================== Bulk Data ====================
             Tool(
                 name="sovd_bulkdata_categories",
@@ -1561,6 +1609,64 @@ def register_tools(
                         },
                     },
                     "required": ["entity_id", "fault_code"],
+                },
+            ),
+            Tool(
+                name="sovd_bulkdata_upload",
+                description="Upload a file to an entity's bulk data storage.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "category": {
+                            "type": "string",
+                            "description": "Category name (e.g., 'rosbags')",
+                        },
+                        "file_content": {
+                            "type": "string",
+                            "description": "Base64-encoded file content to upload",
+                        },
+                        "filename": {
+                            "type": "string",
+                            "description": "Filename for the uploaded file",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "apps",
+                        },
+                    },
+                    "required": ["entity_id", "category", "file_content", "filename"],
+                },
+            ),
+            Tool(
+                name="sovd_bulkdata_delete",
+                description="Delete a bulk data item.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "category": {
+                            "type": "string",
+                            "description": "Category name (e.g., 'rosbags')",
+                        },
+                        "item_id": {
+                            "type": "string",
+                            "description": "The bulk-data item identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "apps",
+                        },
+                    },
+                    "required": ["entity_id", "category", "item_id"],
                 },
             ),
             # ==================== Logs ====================
@@ -2551,6 +2657,18 @@ def register_tools(
                 result = await client.delete_all_configurations(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
+            # ==================== Data Discovery ====================
+
+            elif normalized_name == "sovd_data_categories":
+                args = DataCategoriesArgs(**arguments)
+                result = await client.list_data_categories(args.entity_id, args.entity_type)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_data_groups":
+                args = DataGroupsArgs(**arguments)
+                result = await client.list_data_groups(args.entity_id, args.entity_type)
+                return format_json_response(result)
+
             # ==================== Bulk Data ====================
 
             elif normalized_name == "sovd_bulkdata_categories":
@@ -2580,6 +2698,23 @@ def register_tools(
                 return await download_rosbags_for_fault(
                     client, args.entity_id, args.fault_code, args.entity_type, args.output_dir
                 )
+
+            elif normalized_name == "sovd_bulkdata_upload":
+                args = BulkDataUploadArgs(**arguments)
+                import base64
+
+                file_bytes = base64.b64decode(args.file_content)
+                result = await client.upload_bulk_data(
+                    args.entity_id, args.category, file_bytes, args.filename, args.entity_type
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_bulkdata_delete":
+                args = BulkDataDeleteArgs(**arguments)
+                result = await client.delete_bulk_data_item(
+                    args.entity_id, args.category, args.item_id, args.entity_type
+                )
+                return format_json_response(result)
 
             # ==================== Logs ====================
 
