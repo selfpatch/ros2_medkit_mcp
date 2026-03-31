@@ -2029,7 +2029,7 @@ def register_tools(
                         },
                         "action": {
                             "type": "object",
-                            "description": "Control action (e.g., {'command': 'stop'} or {'command': 'pause'})",
+                            "description": "Control action (e.g., {'action': 'stop'} or {'action': 'pause'})",
                         },
                         "entity_type": {
                             "type": "string",
