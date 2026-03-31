@@ -44,13 +44,16 @@ from ros2_medkit_mcp.models import (
     FreezeFrameSnapshot,
     FunctionIdArgs,
     GetConfigurationArgs,
+    GetLogConfigurationArgs,
     GetOperationArgs,
     ListConfigurationsArgs,
     ListExecutionsArgs,
+    ListLogsArgs,
     ListOperationsArgs,
     PublishTopicArgs,
     RosbagSnapshot,
     SetConfigurationArgs,
+    SetLogConfigurationArgs,
     SubareasArgs,
     SubcomponentsArgs,
     SystemFaultSnapshotsArgs,
@@ -629,6 +632,10 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_bulkdata_info": "sovd_bulkdata_info",
     "sovd_bulkdata_download": "sovd_bulkdata_download",
     "sovd_bulkdata_download_for_fault": "sovd_bulkdata_download_for_fault",
+    # Logs
+    "sovd_list_logs": "sovd_list_logs",
+    "sovd_get_log_configuration": "sovd_get_log_configuration",
+    "sovd_set_log_configuration": "sovd_set_log_configuration",
 }
 
 
@@ -1497,6 +1504,68 @@ def register_tools(
                     "required": ["entity_id", "fault_code"],
                 },
             ),
+            # ==================== Logs ====================
+            Tool(
+                name="sovd_list_logs",
+                description="List log entries for an entity. Returns recent log messages.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id"],
+                },
+            ),
+            Tool(
+                name="sovd_get_log_configuration",
+                description="Get log configuration for an entity.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id"],
+                },
+            ),
+            Tool(
+                name="sovd_set_log_configuration",
+                description="Update log configuration for an entity.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "config": {
+                            "type": "object",
+                            "description": "Log configuration settings (e.g., {'level': 'debug', 'max_entries': 1000})",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "config"],
+                },
+            ),
         ]
         # Append plugin tools
         if plugins:
@@ -1824,6 +1893,25 @@ def register_tools(
                 return await download_rosbags_for_fault(
                     client, args.entity_id, args.fault_code, args.entity_type, args.output_dir
                 )
+
+            # ==================== Logs ====================
+
+            elif normalized_name == "sovd_list_logs":
+                args = ListLogsArgs(**arguments)
+                result = await client.list_logs(args.entity_id, args.entity_type)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_get_log_configuration":
+                args = GetLogConfigurationArgs(**arguments)
+                result = await client.get_log_configuration(args.entity_id, args.entity_type)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_set_log_configuration":
+                args = SetLogConfigurationArgs(**arguments)
+                result = await client.set_log_configuration(
+                    args.entity_id, args.config, args.entity_type
+                )
+                return format_json_response(result)
 
             else:
                 # Check plugin tool map before reporting unknown tool

@@ -740,6 +740,43 @@ class BulkDataDownloadForFaultArgs(BaseModel):
     )
 
 
+# ==================== Logs Argument Models ====================
+
+
+class ListLogsArgs(BaseModel):
+    """Arguments for sovd_list_logs tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
+class GetLogConfigurationArgs(BaseModel):
+    """Arguments for sovd_get_log_configuration tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
+class SetLogConfigurationArgs(BaseModel):
+    """Arguments for sovd_set_log_configuration tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    config: dict[str, Any] = Field(
+        ...,
+        description="Log configuration settings (e.g., {'level': 'debug', 'max_entries': 1000})",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
 class ToolResult(BaseModel):
     """Standard result wrapper for tool responses."""
 

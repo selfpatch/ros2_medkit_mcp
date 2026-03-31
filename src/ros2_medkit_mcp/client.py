@@ -24,6 +24,7 @@ from ros2_medkit_client.api import (
     data,
     discovery,
     faults,
+    logs,
     operations,
     server,
 )
@@ -248,6 +249,26 @@ _ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
             "apps": bulk_data.list_app_bulk_data_descriptors,
             "areas": bulk_data.list_area_bulk_data_descriptors,
             "functions": bulk_data.list_function_bulk_data_descriptors,
+        },
+    },
+    "logs": {
+        "list": {
+            "components": logs.list_component_logs,
+            "apps": logs.list_app_logs,
+            "areas": logs.list_area_logs,
+            "functions": logs.list_function_logs,
+        },
+        "get_config": {
+            "components": logs.get_component_log_configuration,
+            "apps": logs.get_app_log_configuration,
+            "areas": logs.get_area_log_configuration,
+            "functions": logs.get_function_log_configuration,
+        },
+        "set_config": {
+            "components": logs.set_component_log_configuration,
+            "apps": logs.set_app_log_configuration,
+            "areas": logs.set_area_log_configuration,
+            "functions": logs.set_function_log_configuration,
         },
     },
 }
@@ -744,6 +765,45 @@ class SovdClient:
             )
 
         return response.content, _extract_filename(response.headers.get("Content-Disposition", ""))
+
+    # ==================== Logs ====================
+
+    async def list_logs(
+        self, entity_id: str, entity_type: str = "components"
+    ) -> list[dict[str, Any]]:
+        fn = _entity_func("logs", "list", entity_type)
+        return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
+
+    async def get_log_configuration(
+        self, entity_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("logs", "get_config", entity_type)
+        return await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id})
+
+    async def set_log_configuration(
+        self, entity_id: str, config: dict[str, Any], entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("logs", "set_config", entity_type)
+        # set_log_configuration returns 204 No Content on success.
+        # The generated client returns None for 204, which MedkitClient.call()
+        # treats as an error. Call the function directly and treat None as success.
+        if isinstance(config, dict):
+            config = _wrap_body_dict(fn, config)
+        client = await self._ensure_client()
+        try:
+            result = await fn(
+                client=client.http,
+                **{_entity_id_kwarg(entity_type): entity_id, "body": config},
+            )
+            if result is None:
+                return {}
+            return _to_dict(result)
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
 
 
 @asynccontextmanager
