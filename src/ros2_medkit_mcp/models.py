@@ -964,6 +964,59 @@ class ExtendLockArgs(BaseModel):
     )
 
 
+# ==================== Cyclic Subscriptions Argument Models ====================
+
+
+class CreateCyclicSubArgs(BaseModel):
+    """Arguments for sovd_create_cyclic_sub tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    sub_config: dict[str, Any] = Field(
+        ...,
+        description=(
+            "Subscription configuration"
+            " (e.g., {'resource': '/data/temperature', 'period': 1000})"
+        ),
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', or 'functions'",
+    )
+
+
+class ListCyclicSubsArgs(BaseModel):
+    """Arguments for sovd_list_cyclic_subs tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', or 'functions'",
+    )
+
+
+class GetCyclicSubArgs(BaseModel):
+    """Arguments for sovd_get_cyclic_sub and sovd_delete_cyclic_sub tools."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    subscription_id: str = Field(..., description="The subscription identifier")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', or 'functions'",
+    )
+
+
+class UpdateCyclicSubArgs(BaseModel):
+    """Arguments for sovd_update_cyclic_sub tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    subscription_id: str = Field(..., description="The subscription identifier")
+    sub_config: dict[str, Any] = Field(..., description="Updated subscription configuration")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', or 'functions'",
+    )
+
+
 class ToolResult(BaseModel):
     """Standard result wrapper for tool responses."""
 

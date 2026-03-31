@@ -342,3 +342,75 @@ class TestLockingTools:
         result = await client.release_lock("motor", "lock-1")
         assert result == {}
         await client.close()
+
+
+class TestSubscriptionsTools:
+    """Tests for cyclic subscription management tools.
+
+    Cyclic subscriptions are supported on components, apps, and functions (not areas).
+    """
+
+    # CyclicSubscription model requires: id, event_source, interval, observed_resource, protocol
+    SUBSCRIPTION_RESPONSE = {
+        "id": "sub-1",
+        "event_source": "/events",
+        "interval": "fast",
+        "observed_resource": "/data/temperature",
+        "protocol": "sse",
+    }
+
+    @respx.mock
+    async def test_create_cyclic_subscription(self, client: SovdClient) -> None:
+        respx.post("http://test-sovd:8080/api/v1/components/motor/cyclic-subscriptions").mock(
+            return_value=httpx.Response(201, json=self.SUBSCRIPTION_RESPONSE)
+        )
+        result = await client.create_cyclic_subscription(
+            "motor",
+            {"resource": "/data/temperature", "interval": "fast", "duration": 60},
+        )
+        assert result["id"] == "sub-1"
+        assert result["observed_resource"] == "/data/temperature"
+        await client.close()
+
+    @respx.mock
+    async def test_list_cyclic_subscriptions(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/cyclic-subscriptions").mock(
+            return_value=httpx.Response(200, json={"items": [self.SUBSCRIPTION_RESPONSE]})
+        )
+        result = await client.list_cyclic_subscriptions("motor")
+        assert len(result) == 1
+        assert result[0]["id"] == "sub-1"
+        await client.close()
+
+    @respx.mock
+    async def test_get_cyclic_subscription(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/cyclic-subscriptions/sub-1").mock(
+            return_value=httpx.Response(200, json=self.SUBSCRIPTION_RESPONSE)
+        )
+        result = await client.get_cyclic_subscription("motor", "sub-1")
+        assert result["id"] == "sub-1"
+        assert result["protocol"] == "sse"
+        await client.close()
+
+    @respx.mock
+    async def test_update_cyclic_subscription(self, client: SovdClient) -> None:
+        updated = {**self.SUBSCRIPTION_RESPONSE, "interval": "slow"}
+        respx.put("http://test-sovd:8080/api/v1/components/motor/cyclic-subscriptions/sub-1").mock(
+            return_value=httpx.Response(200, json=updated)
+        )
+        result = await client.update_cyclic_subscription(
+            "motor",
+            "sub-1",
+            {**self.SUBSCRIPTION_RESPONSE, "interval": "slow"},
+        )
+        assert result["interval"] == "slow"
+        await client.close()
+
+    @respx.mock
+    async def test_delete_cyclic_subscription(self, client: SovdClient) -> None:
+        respx.delete(
+            "http://test-sovd:8080/api/v1/components/motor/cyclic-subscriptions/sub-1"
+        ).mock(return_value=httpx.Response(204))
+        result = await client.delete_cyclic_subscription("motor", "sub-1")
+        assert result == {}
+        await client.close()
