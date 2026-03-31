@@ -830,6 +830,87 @@ class UpdateTriggerArgs(BaseModel):
     )
 
 
+# ==================== Scripts Argument Models ====================
+
+
+class ListScriptsArgs(BaseModel):
+    """Arguments for sovd_list_scripts tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
+class GetScriptArgs(BaseModel):
+    """Arguments for sovd_get_script tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    script_id: str = Field(..., description="The script identifier")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
+class UploadScriptArgs(BaseModel):
+    """Arguments for sovd_upload_script tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    script_content: str = Field(
+        ...,
+        description="The script content as a string (will be uploaded as binary)",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
+class ExecuteScriptArgs(BaseModel):
+    """Arguments for sovd_execute_script tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    script_id: str = Field(..., description="The script identifier")
+    params: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional parameters to pass to the script execution",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
+class GetScriptExecutionArgs(BaseModel):
+    """Arguments for sovd_get_script_execution tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    script_id: str = Field(..., description="The script identifier")
+    execution_id: str = Field(..., description="The execution identifier")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
+class ControlScriptExecutionArgs(BaseModel):
+    """Arguments for sovd_control_script_execution tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    script_id: str = Field(..., description="The script identifier")
+    execution_id: str = Field(..., description="The execution identifier")
+    action: dict[str, Any] = Field(
+        ...,
+        description="Control action (e.g., {'command': 'stop'} or {'command': 'pause'})",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
 class ToolResult(BaseModel):
     """Standard result wrapper for tool responses."""
 
