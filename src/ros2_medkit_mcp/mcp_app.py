@@ -1810,7 +1810,7 @@ def register_tools(
             ),
             Tool(
                 name="sovd_create_trigger",
-                description="Create a new trigger on an entity. Triggers monitor resources and fire events on change.",
+                description="Create a new trigger on an entity. Triggers monitor resources and fire events on change. Required fields in trigger_config: 'resource' (data URI to monitor), 'trigger_condition' (object with 'condition_type' string).",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -1820,7 +1820,25 @@ def register_tools(
                         },
                         "trigger_config": {
                             "type": "object",
-                            "description": "Trigger configuration (e.g., {'resource': '/data/temperature', 'interval': 'fast', 'duration': 60})",
+                            "description": "Trigger config. Example: {'resource': '/data/temperature', 'trigger_condition': {'condition_type': 'on_change'}}",
+                            "properties": {
+                                "resource": {
+                                    "type": "string",
+                                    "description": "Data URI to monitor (e.g., '/data/temperature')",
+                                },
+                                "trigger_condition": {
+                                    "type": "object",
+                                    "description": "Condition that triggers the event",
+                                    "properties": {
+                                        "condition_type": {
+                                            "type": "string",
+                                            "description": "Condition type (e.g., 'on_change', 'threshold')",
+                                        },
+                                    },
+                                    "required": ["condition_type"],
+                                },
+                            },
+                            "required": ["resource", "trigger_condition"],
                         },
                         "entity_type": {
                             "type": "string",
@@ -2068,7 +2086,7 @@ def register_tools(
             # ==================== Locking ====================
             Tool(
                 name="sovd_acquire_lock",
-                description="Acquire an exclusive lock on an entity for safe modifications.",
+                description="Acquire an exclusive lock on an entity for safe modifications. Required field in lock_config: 'lock_expiration' (integer, seconds until lock expires).",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -2078,7 +2096,20 @@ def register_tools(
                         },
                         "lock_config": {
                             "type": "object",
-                            "description": "Lock configuration (e.g., {'duration': 60, 'reason': 'maintenance'})",
+                            "description": "Lock config. Example: {'lock_expiration': 60}",
+                            "properties": {
+                                "lock_expiration": {
+                                    "type": "integer",
+                                    "description": "Lock duration in seconds",
+                                    "minimum": 1,
+                                },
+                                "scopes": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Optional lock scopes",
+                                },
+                            },
+                            "required": ["lock_expiration"],
                         },
                         "entity_type": {
                             "type": "string",
