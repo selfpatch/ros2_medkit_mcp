@@ -601,111 +601,184 @@ async def download_rosbags_for_fault(
     return [TextContent(type="text", text="\n".join(lines))]
 
 
-# Map dotted names (from docs) to valid underscore names
+# Map legacy sovd_* names and dotted names to canonical ros2_medkit_* names.
+# Old sovd_* keys are kept for backwards compatibility.
 TOOL_ALIASES: dict[str, str] = {
-    "sovd.version": "sovd_version",
-    "sovd_version": "sovd_version",
-    "sovd_health": "sovd_health",
-    "sovd.entities.list": "sovd_entities_list",
-    "sovd_entities_list": "sovd_entities_list",
-    "sovd_areas_list": "sovd_areas_list",
-    "sovd_area_get": "sovd_area_get",
-    "sovd_components_list": "sovd_components_list",
-    "sovd_component_get": "sovd_component_get",
-    "sovd.entities.get": "sovd_entities_get",
-    "sovd_entities_get": "sovd_entities_get",
-    "sovd.faults.list": "sovd_faults_list",
-    "sovd_faults_list": "sovd_faults_list",
-    "sovd_faults_get": "sovd_faults_get",
-    "sovd_faults_clear": "sovd_faults_clear",
-    # Apps & Functions
-    "sovd_apps_list": "sovd_apps_list",
-    "sovd_apps_get": "sovd_apps_get",
-    "sovd_apps_dependencies": "sovd_apps_dependencies",
-    "sovd_functions_list": "sovd_functions_list",
-    "sovd_functions_get": "sovd_functions_get",
-    "sovd_functions_hosts": "sovd_functions_hosts",
-    # Area relationships
-    "sovd_area_components": "sovd_area_components",
-    "sovd_area_subareas": "sovd_area_subareas",
-    "sovd_area_contains": "sovd_area_contains",
-    # Component relationships
-    "sovd_component_subcomponents": "sovd_component_subcomponents",
-    "sovd_component_hosts": "sovd_component_hosts",
-    "sovd_component_dependencies": "sovd_component_dependencies",
-    # Entity data (entity-agnostic)
-    "sovd_entity_data": "sovd_entity_data",
-    "sovd_entity_topic_data": "sovd_entity_topic_data",
-    "sovd_publish_topic": "sovd_publish_topic",
-    # Operations - executions model
-    "sovd_list_operations": "sovd_list_operations",
-    "sovd_get_operation": "sovd_get_operation",
-    "sovd_create_execution": "sovd_create_execution",
-    "sovd_list_executions": "sovd_list_executions",
-    "sovd_get_execution": "sovd_get_execution",
-    "sovd_update_execution": "sovd_update_execution",
-    "sovd_cancel_execution": "sovd_cancel_execution",
-    # Configurations
-    "sovd_list_configurations": "sovd_list_configurations",
-    "sovd_get_configuration": "sovd_get_configuration",
-    "sovd_set_configuration": "sovd_set_configuration",
-    "sovd_delete_configuration": "sovd_delete_configuration",
-    "sovd_delete_all_configurations": "sovd_delete_all_configurations",
-    # Faults - extended
-    "sovd_all_faults_list": "sovd_all_faults_list",
-    "sovd_clear_all_faults": "sovd_clear_all_faults",
-    "sovd_fault_snapshots": "sovd_fault_snapshots",
-    "sovd_system_fault_snapshots": "sovd_system_fault_snapshots",
-    # Data discovery
-    "sovd_data_categories": "sovd_data_categories",
-    "sovd_data_groups": "sovd_data_groups",
-    # Bulk data
-    "sovd_bulkdata_categories": "sovd_bulkdata_categories",
-    "sovd_bulkdata_list": "sovd_bulkdata_list",
-    "sovd_bulkdata_info": "sovd_bulkdata_info",
-    "sovd_bulkdata_download": "sovd_bulkdata_download",
-    "sovd_bulkdata_download_for_fault": "sovd_bulkdata_download_for_fault",
-    "sovd_bulkdata_upload": "sovd_bulkdata_upload",
-    "sovd_bulkdata_delete": "sovd_bulkdata_delete",
-    # Logs
-    "sovd_list_logs": "sovd_list_logs",
-    "sovd_get_log_configuration": "sovd_get_log_configuration",
-    "sovd_set_log_configuration": "sovd_set_log_configuration",
-    # Triggers
-    "sovd_list_triggers": "sovd_list_triggers",
-    "sovd_get_trigger": "sovd_get_trigger",
-    "sovd_create_trigger": "sovd_create_trigger",
-    "sovd_update_trigger": "sovd_update_trigger",
-    "sovd_delete_trigger": "sovd_delete_trigger",
-    # Scripts
-    "sovd_list_scripts": "sovd_list_scripts",
-    "sovd_get_script": "sovd_get_script",
-    "sovd_upload_script": "sovd_upload_script",
-    "sovd_execute_script": "sovd_execute_script",
-    "sovd_get_script_execution": "sovd_get_script_execution",
-    "sovd_control_script_execution": "sovd_control_script_execution",
-    "sovd_delete_script": "sovd_delete_script",
-    # Locking
-    "sovd_acquire_lock": "sovd_acquire_lock",
-    "sovd_list_locks": "sovd_list_locks",
-    "sovd_get_lock": "sovd_get_lock",
-    "sovd_extend_lock": "sovd_extend_lock",
-    "sovd_release_lock": "sovd_release_lock",
-    # Cyclic Subscriptions
-    "sovd_create_cyclic_sub": "sovd_create_cyclic_sub",
-    "sovd_list_cyclic_subs": "sovd_list_cyclic_subs",
-    "sovd_get_cyclic_sub": "sovd_get_cyclic_sub",
-    "sovd_update_cyclic_sub": "sovd_update_cyclic_sub",
-    "sovd_delete_cyclic_sub": "sovd_delete_cyclic_sub",
-    # Software Updates
-    "sovd_list_updates": "sovd_list_updates",
-    "sovd_register_update": "sovd_register_update",
-    "sovd_get_update": "sovd_get_update",
-    "sovd_get_update_status": "sovd_get_update_status",
-    "sovd_prepare_update": "sovd_prepare_update",
-    "sovd_execute_update": "sovd_execute_update",
-    "sovd_automate_update": "sovd_automate_update",
-    "sovd_delete_update": "sovd_delete_update",
+    # Canonical identity entries
+    "ros2_medkit_version": "ros2_medkit_version",
+    "ros2_medkit_health": "ros2_medkit_health",
+    "ros2_medkit_entities_list": "ros2_medkit_entities_list",
+    "ros2_medkit_areas_list": "ros2_medkit_areas_list",
+    "ros2_medkit_area_get": "ros2_medkit_area_get",
+    "ros2_medkit_components_list": "ros2_medkit_components_list",
+    "ros2_medkit_component_get": "ros2_medkit_component_get",
+    "ros2_medkit_entities_get": "ros2_medkit_entities_get",
+    "ros2_medkit_faults_list": "ros2_medkit_faults_list",
+    "ros2_medkit_faults_get": "ros2_medkit_faults_get",
+    "ros2_medkit_faults_clear": "ros2_medkit_faults_clear",
+    "ros2_medkit_apps_list": "ros2_medkit_apps_list",
+    "ros2_medkit_apps_get": "ros2_medkit_apps_get",
+    "ros2_medkit_apps_dependencies": "ros2_medkit_apps_dependencies",
+    "ros2_medkit_functions_list": "ros2_medkit_functions_list",
+    "ros2_medkit_functions_get": "ros2_medkit_functions_get",
+    "ros2_medkit_functions_hosts": "ros2_medkit_functions_hosts",
+    "ros2_medkit_area_components": "ros2_medkit_area_components",
+    "ros2_medkit_area_subareas": "ros2_medkit_area_subareas",
+    "ros2_medkit_area_contains": "ros2_medkit_area_contains",
+    "ros2_medkit_component_subcomponents": "ros2_medkit_component_subcomponents",
+    "ros2_medkit_component_hosts": "ros2_medkit_component_hosts",
+    "ros2_medkit_component_dependencies": "ros2_medkit_component_dependencies",
+    "ros2_medkit_entity_data": "ros2_medkit_entity_data",
+    "ros2_medkit_entity_topic_data": "ros2_medkit_entity_topic_data",
+    "ros2_medkit_publish_topic": "ros2_medkit_publish_topic",
+    "ros2_medkit_list_operations": "ros2_medkit_list_operations",
+    "ros2_medkit_get_operation": "ros2_medkit_get_operation",
+    "ros2_medkit_create_execution": "ros2_medkit_create_execution",
+    "ros2_medkit_list_executions": "ros2_medkit_list_executions",
+    "ros2_medkit_get_execution": "ros2_medkit_get_execution",
+    "ros2_medkit_update_execution": "ros2_medkit_update_execution",
+    "ros2_medkit_cancel_execution": "ros2_medkit_cancel_execution",
+    "ros2_medkit_list_configurations": "ros2_medkit_list_configurations",
+    "ros2_medkit_get_configuration": "ros2_medkit_get_configuration",
+    "ros2_medkit_set_configuration": "ros2_medkit_set_configuration",
+    "ros2_medkit_delete_configuration": "ros2_medkit_delete_configuration",
+    "ros2_medkit_delete_all_configurations": "ros2_medkit_delete_all_configurations",
+    "ros2_medkit_all_faults_list": "ros2_medkit_all_faults_list",
+    "ros2_medkit_clear_all_faults": "ros2_medkit_clear_all_faults",
+    "ros2_medkit_fault_snapshots": "ros2_medkit_fault_snapshots",
+    "ros2_medkit_system_fault_snapshots": "ros2_medkit_system_fault_snapshots",
+    "ros2_medkit_data_categories": "ros2_medkit_data_categories",
+    "ros2_medkit_data_groups": "ros2_medkit_data_groups",
+    "ros2_medkit_bulkdata_categories": "ros2_medkit_bulkdata_categories",
+    "ros2_medkit_bulkdata_list": "ros2_medkit_bulkdata_list",
+    "ros2_medkit_bulkdata_info": "ros2_medkit_bulkdata_info",
+    "ros2_medkit_bulkdata_download": "ros2_medkit_bulkdata_download",
+    "ros2_medkit_bulkdata_download_for_fault": "ros2_medkit_bulkdata_download_for_fault",
+    "ros2_medkit_bulkdata_upload": "ros2_medkit_bulkdata_upload",
+    "ros2_medkit_bulkdata_delete": "ros2_medkit_bulkdata_delete",
+    "ros2_medkit_list_logs": "ros2_medkit_list_logs",
+    "ros2_medkit_get_log_configuration": "ros2_medkit_get_log_configuration",
+    "ros2_medkit_set_log_configuration": "ros2_medkit_set_log_configuration",
+    "ros2_medkit_list_triggers": "ros2_medkit_list_triggers",
+    "ros2_medkit_get_trigger": "ros2_medkit_get_trigger",
+    "ros2_medkit_create_trigger": "ros2_medkit_create_trigger",
+    "ros2_medkit_update_trigger": "ros2_medkit_update_trigger",
+    "ros2_medkit_delete_trigger": "ros2_medkit_delete_trigger",
+    "ros2_medkit_list_scripts": "ros2_medkit_list_scripts",
+    "ros2_medkit_get_script": "ros2_medkit_get_script",
+    "ros2_medkit_upload_script": "ros2_medkit_upload_script",
+    "ros2_medkit_execute_script": "ros2_medkit_execute_script",
+    "ros2_medkit_get_script_execution": "ros2_medkit_get_script_execution",
+    "ros2_medkit_control_script_execution": "ros2_medkit_control_script_execution",
+    "ros2_medkit_delete_script": "ros2_medkit_delete_script",
+    "ros2_medkit_acquire_lock": "ros2_medkit_acquire_lock",
+    "ros2_medkit_list_locks": "ros2_medkit_list_locks",
+    "ros2_medkit_get_lock": "ros2_medkit_get_lock",
+    "ros2_medkit_extend_lock": "ros2_medkit_extend_lock",
+    "ros2_medkit_release_lock": "ros2_medkit_release_lock",
+    "ros2_medkit_create_cyclic_sub": "ros2_medkit_create_cyclic_sub",
+    "ros2_medkit_list_cyclic_subs": "ros2_medkit_list_cyclic_subs",
+    "ros2_medkit_get_cyclic_sub": "ros2_medkit_get_cyclic_sub",
+    "ros2_medkit_update_cyclic_sub": "ros2_medkit_update_cyclic_sub",
+    "ros2_medkit_delete_cyclic_sub": "ros2_medkit_delete_cyclic_sub",
+    "ros2_medkit_list_updates": "ros2_medkit_list_updates",
+    "ros2_medkit_register_update": "ros2_medkit_register_update",
+    "ros2_medkit_get_update": "ros2_medkit_get_update",
+    "ros2_medkit_get_update_status": "ros2_medkit_get_update_status",
+    "ros2_medkit_prepare_update": "ros2_medkit_prepare_update",
+    "ros2_medkit_execute_update": "ros2_medkit_execute_update",
+    "ros2_medkit_automate_update": "ros2_medkit_automate_update",
+    "ros2_medkit_delete_update": "ros2_medkit_delete_update",
+    # Legacy sovd_* aliases (backwards compatibility)
+    "sovd_version": "ros2_medkit_version",
+    "sovd_health": "ros2_medkit_health",
+    "sovd_entities_list": "ros2_medkit_entities_list",
+    "sovd_areas_list": "ros2_medkit_areas_list",
+    "sovd_area_get": "ros2_medkit_area_get",
+    "sovd_components_list": "ros2_medkit_components_list",
+    "sovd_component_get": "ros2_medkit_component_get",
+    "sovd_entities_get": "ros2_medkit_entities_get",
+    "sovd_faults_list": "ros2_medkit_faults_list",
+    "sovd_faults_get": "ros2_medkit_faults_get",
+    "sovd_faults_clear": "ros2_medkit_faults_clear",
+    "sovd_apps_list": "ros2_medkit_apps_list",
+    "sovd_apps_get": "ros2_medkit_apps_get",
+    "sovd_apps_dependencies": "ros2_medkit_apps_dependencies",
+    "sovd_functions_list": "ros2_medkit_functions_list",
+    "sovd_functions_get": "ros2_medkit_functions_get",
+    "sovd_functions_hosts": "ros2_medkit_functions_hosts",
+    "sovd_area_components": "ros2_medkit_area_components",
+    "sovd_area_subareas": "ros2_medkit_area_subareas",
+    "sovd_area_contains": "ros2_medkit_area_contains",
+    "sovd_component_subcomponents": "ros2_medkit_component_subcomponents",
+    "sovd_component_hosts": "ros2_medkit_component_hosts",
+    "sovd_component_dependencies": "ros2_medkit_component_dependencies",
+    "sovd_entity_data": "ros2_medkit_entity_data",
+    "sovd_entity_topic_data": "ros2_medkit_entity_topic_data",
+    "sovd_publish_topic": "ros2_medkit_publish_topic",
+    "sovd_list_operations": "ros2_medkit_list_operations",
+    "sovd_get_operation": "ros2_medkit_get_operation",
+    "sovd_create_execution": "ros2_medkit_create_execution",
+    "sovd_list_executions": "ros2_medkit_list_executions",
+    "sovd_get_execution": "ros2_medkit_get_execution",
+    "sovd_update_execution": "ros2_medkit_update_execution",
+    "sovd_cancel_execution": "ros2_medkit_cancel_execution",
+    "sovd_list_configurations": "ros2_medkit_list_configurations",
+    "sovd_get_configuration": "ros2_medkit_get_configuration",
+    "sovd_set_configuration": "ros2_medkit_set_configuration",
+    "sovd_delete_configuration": "ros2_medkit_delete_configuration",
+    "sovd_delete_all_configurations": "ros2_medkit_delete_all_configurations",
+    "sovd_all_faults_list": "ros2_medkit_all_faults_list",
+    "sovd_clear_all_faults": "ros2_medkit_clear_all_faults",
+    "sovd_fault_snapshots": "ros2_medkit_fault_snapshots",
+    "sovd_system_fault_snapshots": "ros2_medkit_system_fault_snapshots",
+    "sovd_data_categories": "ros2_medkit_data_categories",
+    "sovd_data_groups": "ros2_medkit_data_groups",
+    "sovd_bulkdata_categories": "ros2_medkit_bulkdata_categories",
+    "sovd_bulkdata_list": "ros2_medkit_bulkdata_list",
+    "sovd_bulkdata_info": "ros2_medkit_bulkdata_info",
+    "sovd_bulkdata_download": "ros2_medkit_bulkdata_download",
+    "sovd_bulkdata_download_for_fault": "ros2_medkit_bulkdata_download_for_fault",
+    "sovd_bulkdata_upload": "ros2_medkit_bulkdata_upload",
+    "sovd_bulkdata_delete": "ros2_medkit_bulkdata_delete",
+    "sovd_list_logs": "ros2_medkit_list_logs",
+    "sovd_get_log_configuration": "ros2_medkit_get_log_configuration",
+    "sovd_set_log_configuration": "ros2_medkit_set_log_configuration",
+    "sovd_list_triggers": "ros2_medkit_list_triggers",
+    "sovd_get_trigger": "ros2_medkit_get_trigger",
+    "sovd_create_trigger": "ros2_medkit_create_trigger",
+    "sovd_update_trigger": "ros2_medkit_update_trigger",
+    "sovd_delete_trigger": "ros2_medkit_delete_trigger",
+    "sovd_list_scripts": "ros2_medkit_list_scripts",
+    "sovd_get_script": "ros2_medkit_get_script",
+    "sovd_upload_script": "ros2_medkit_upload_script",
+    "sovd_execute_script": "ros2_medkit_execute_script",
+    "sovd_get_script_execution": "ros2_medkit_get_script_execution",
+    "sovd_control_script_execution": "ros2_medkit_control_script_execution",
+    "sovd_delete_script": "ros2_medkit_delete_script",
+    "sovd_acquire_lock": "ros2_medkit_acquire_lock",
+    "sovd_list_locks": "ros2_medkit_list_locks",
+    "sovd_get_lock": "ros2_medkit_get_lock",
+    "sovd_extend_lock": "ros2_medkit_extend_lock",
+    "sovd_release_lock": "ros2_medkit_release_lock",
+    "sovd_create_cyclic_sub": "ros2_medkit_create_cyclic_sub",
+    "sovd_list_cyclic_subs": "ros2_medkit_list_cyclic_subs",
+    "sovd_get_cyclic_sub": "ros2_medkit_get_cyclic_sub",
+    "sovd_update_cyclic_sub": "ros2_medkit_update_cyclic_sub",
+    "sovd_delete_cyclic_sub": "ros2_medkit_delete_cyclic_sub",
+    "sovd_list_updates": "ros2_medkit_list_updates",
+    "sovd_register_update": "ros2_medkit_register_update",
+    "sovd_get_update": "ros2_medkit_get_update",
+    "sovd_get_update_status": "ros2_medkit_get_update_status",
+    "sovd_prepare_update": "ros2_medkit_prepare_update",
+    "sovd_execute_update": "ros2_medkit_execute_update",
+    "sovd_automate_update": "ros2_medkit_automate_update",
+    "sovd_delete_update": "ros2_medkit_delete_update",
+    # Dot-notation aliases (legacy)
+    "sovd.version": "ros2_medkit_version",
+    "sovd.entities.list": "ros2_medkit_entities_list",
+    "sovd.entities.get": "ros2_medkit_entities_get",
+    "sovd.faults.list": "ros2_medkit_faults_list",
 }
 
 
@@ -728,7 +801,7 @@ def register_tools(
         tools = [
             # ==================== Discovery ====================
             Tool(
-                name="sovd_version",
+                name="ros2_medkit_version",
                 description="Get the SOVD API version information from ros2_medkit gateway. Use this to verify the gateway is running.",
                 inputSchema={
                     "type": "object",
@@ -737,7 +810,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_health",
+                name="ros2_medkit_health",
                 description="Get health status of the SOVD gateway. Returns service status.",
                 inputSchema={
                     "type": "object",
@@ -746,7 +819,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_entities_list",
+                name="ros2_medkit_entities_list",
                 description="List all SOVD entities (areas and components combined) with optional substring filtering. This is the primary discovery tool - use it first to explore what's available in the system before querying specific components.",
                 inputSchema={
                     "type": "object",
@@ -760,8 +833,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_areas_list",
-                description="List all SOVD areas (ROS 2 namespaces). Areas are top-level groupings like 'perception', 'control', 'diagnostics'. Use this to discover available areas before listing their components with sovd_area_components.",
+                name="ros2_medkit_areas_list",
+                description="List all SOVD areas (ROS 2 namespaces). Areas are top-level groupings like 'perception', 'control', 'diagnostics'. Use this to discover available areas before listing their components with ros2_medkit_area_components.",
                 inputSchema={
                     "type": "object",
                     "properties": {},
@@ -769,7 +842,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_area_get",
+                name="ros2_medkit_area_get",
                 description="Get detailed information about a specific area including its capabilities.",
                 inputSchema={
                     "type": "object",
@@ -783,8 +856,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_components_list",
-                description="List all SOVD components (ROS 2 nodes) across all areas. Returns component IDs that can be used with other tools like sovd_faults_list, sovd_entity_data, etc.",
+                name="ros2_medkit_components_list",
+                description="List all SOVD components (ROS 2 nodes) across all areas. Returns component IDs that can be used with other tools like ros2_medkit_faults_list, ros2_medkit_entity_data, etc.",
                 inputSchema={
                     "type": "object",
                     "properties": {},
@@ -792,7 +865,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_component_get",
+                name="ros2_medkit_component_get",
                 description="Get detailed information about a specific component including its capabilities.",
                 inputSchema={
                     "type": "object",
@@ -806,8 +879,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_entities_get",
-                description="Get detailed information about a specific SOVD entity by its identifier, including live data if available. Use sovd_entities_list or sovd_components_list first to discover valid entity IDs.",
+                name="ros2_medkit_entities_get",
+                description="Get detailed information about a specific SOVD entity by its identifier, including live data if available. Use ros2_medkit_entities_list or ros2_medkit_components_list first to discover valid entity IDs.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -821,14 +894,14 @@ def register_tools(
             ),
             # ==================== Faults ====================
             Tool(
-                name="sovd_faults_list",
-                description="List all faults for a specific entity. IMPORTANT: First use sovd_components_list or sovd_area_components to discover valid entity IDs.",
+                name="ros2_medkit_faults_list",
+                description="List all faults for a specific entity. IMPORTANT: First use ros2_medkit_components_list or ros2_medkit_area_components to discover valid entity IDs.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "entity_id": {
                             "type": "string",
-                            "description": "The entity identifier (use sovd_entities_list to discover valid IDs)",
+                            "description": "The entity identifier (use ros2_medkit_entities_list to discover valid IDs)",
                         },
                         "entity_type": {
                             "type": "string",
@@ -841,8 +914,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_faults_get",
-                description="Get a specific fault by its code from an entity. First use sovd_faults_list to discover available faults.",
+                name="ros2_medkit_faults_get",
+                description="Get a specific fault by its code from an entity. First use ros2_medkit_faults_list to discover available faults.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -865,8 +938,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_faults_clear",
-                description="Clear (acknowledge/dismiss) a fault from an entity. Use sovd_faults_list first to see active faults.",
+                name="ros2_medkit_faults_clear",
+                description="Clear (acknowledge/dismiss) a fault from an entity. Use ros2_medkit_faults_list first to see active faults.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -889,7 +962,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_all_faults_list",
+                name="ros2_medkit_all_faults_list",
                 description="List all faults across the entire system. Returns faults from all components.",
                 inputSchema={
                     "type": "object",
@@ -898,7 +971,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_clear_all_faults",
+                name="ros2_medkit_clear_all_faults",
                 description="Clear all faults for a specific entity. WARNING: This clears ALL active faults for the entity.",
                 inputSchema={
                     "type": "object",
@@ -918,7 +991,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_fault_snapshots",
+                name="ros2_medkit_fault_snapshots",
                 description="Get diagnostic snapshots for a specific fault. Contains data captured at fault occurrence time.",
                 inputSchema={
                     "type": "object",
@@ -942,7 +1015,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_system_fault_snapshots",
+                name="ros2_medkit_system_fault_snapshots",
                 description="Get system-wide diagnostic snapshots for a fault code.",
                 inputSchema={
                     "type": "object",
@@ -956,21 +1029,21 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_area_components",
-                description="List all components within a specific area. Use sovd_areas_list first to discover valid area IDs (e.g., 'perception', 'control', 'diagnostics').",
+                name="ros2_medkit_area_components",
+                description="List all components within a specific area. Use ros2_medkit_areas_list first to discover valid area IDs (e.g., 'perception', 'control', 'diagnostics').",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "area_id": {
                             "type": "string",
-                            "description": "The area identifier (use sovd_areas_list to discover valid IDs)",
+                            "description": "The area identifier (use ros2_medkit_areas_list to discover valid IDs)",
                         },
                     },
                     "required": ["area_id"],
                 },
             ),
             Tool(
-                name="sovd_area_subareas",
+                name="ros2_medkit_area_subareas",
                 description="List sub-areas within an area. Use this to explore area hierarchy.",
                 inputSchema={
                     "type": "object",
@@ -984,7 +1057,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_area_contains",
+                name="ros2_medkit_area_contains",
                 description="List all entities contained in an area (components, apps, etc.).",
                 inputSchema={
                     "type": "object",
@@ -999,7 +1072,7 @@ def register_tools(
             ),
             # ==================== Apps ====================
             Tool(
-                name="sovd_apps_list",
+                name="ros2_medkit_apps_list",
                 description="List all SOVD apps (ROS 2 nodes). Apps are individual ROS 2 nodes that can have operations, data, configurations, and faults.",
                 inputSchema={
                     "type": "object",
@@ -1008,7 +1081,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_apps_get",
+                name="ros2_medkit_apps_get",
                 description="Get detailed information about a specific app by its identifier.",
                 inputSchema={
                     "type": "object",
@@ -1022,7 +1095,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_apps_dependencies",
+                name="ros2_medkit_apps_dependencies",
                 description="List dependencies for an app (other apps/components it depends on).",
                 inputSchema={
                     "type": "object",
@@ -1037,7 +1110,7 @@ def register_tools(
             ),
             # ==================== Functions ====================
             Tool(
-                name="sovd_functions_list",
+                name="ros2_medkit_functions_list",
                 description="List all SOVD functions. Functions are capability groupings that may be hosted by multiple apps.",
                 inputSchema={
                     "type": "object",
@@ -1046,7 +1119,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_functions_get",
+                name="ros2_medkit_functions_get",
                 description="Get detailed information about a specific function.",
                 inputSchema={
                     "type": "object",
@@ -1060,7 +1133,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_functions_hosts",
+                name="ros2_medkit_functions_hosts",
                 description="List apps that host a specific function.",
                 inputSchema={
                     "type": "object",
@@ -1075,7 +1148,7 @@ def register_tools(
             ),
             # ==================== Component Relationships ====================
             Tool(
-                name="sovd_component_subcomponents",
+                name="ros2_medkit_component_subcomponents",
                 description="List subcomponents of a component.",
                 inputSchema={
                     "type": "object",
@@ -1089,7 +1162,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_component_hosts",
+                name="ros2_medkit_component_hosts",
                 description="List apps hosted by a component.",
                 inputSchema={
                     "type": "object",
@@ -1103,7 +1176,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_component_dependencies",
+                name="ros2_medkit_component_dependencies",
                 description="List dependencies of a component.",
                 inputSchema={
                     "type": "object",
@@ -1118,7 +1191,7 @@ def register_tools(
             ),
             # ==================== Entity Data ====================
             Tool(
-                name="sovd_entity_data",
+                name="ros2_medkit_entity_data",
                 description="Read all topic data from an entity (returns all topics with their current values). Works with components, apps, areas, and functions.",
                 inputSchema={
                     "type": "object",
@@ -1138,8 +1211,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_entity_topic_data",
-                description="Read data from a specific topic within an entity. Use sovd_entity_data first to discover available topics.",
+                name="ros2_medkit_entity_topic_data",
+                description="Read data from a specific topic within an entity. Use ros2_medkit_entity_data first to discover available topics.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -1149,7 +1222,7 @@ def register_tools(
                         },
                         "topic_name": {
                             "type": "string",
-                            "description": "The topic name (use sovd_entity_data to discover available topics)",
+                            "description": "The topic name (use ros2_medkit_entity_data to discover available topics)",
                         },
                         "entity_type": {
                             "type": "string",
@@ -1162,8 +1235,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_publish_topic",
-                description="Publish data to an entity's topic. Use sovd_entity_data first to verify the topic exists and check its message format.",
+                name="ros2_medkit_publish_topic",
+                description="Publish data to an entity's topic. Use ros2_medkit_entity_data first to verify the topic exists and check its message format.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -1191,7 +1264,7 @@ def register_tools(
             ),
             # ==================== Operations (Services & Actions) ====================
             Tool(
-                name="sovd_list_operations",
+                name="ros2_medkit_list_operations",
                 description="List all operations (ROS 2 services and actions) available for an entity. Works with components, apps, areas, and functions.",
                 inputSchema={
                     "type": "object",
@@ -1211,7 +1284,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_get_operation",
+                name="ros2_medkit_get_operation",
                 description="Get details of a specific operation including its schema and capabilities.",
                 inputSchema={
                     "type": "object",
@@ -1235,7 +1308,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_create_execution",
+                name="ros2_medkit_create_execution",
                 description="Start an execution for an operation (service call or action goal). For services, returns result directly. For actions, returns execution_id to track progress.",
                 inputSchema={
                     "type": "object",
@@ -1263,7 +1336,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_list_executions",
+                name="ros2_medkit_list_executions",
                 description="List all executions for an operation. Use to see execution history and find execution IDs.",
                 inputSchema={
                     "type": "object",
@@ -1287,8 +1360,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_get_execution",
-                description="Get execution status and feedback for a specific execution. Use after sovd_create_execution to track action progress.",
+                name="ros2_medkit_get_execution",
+                description="Get execution status and feedback for a specific execution. Use after ros2_medkit_create_execution to track action progress.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -1315,7 +1388,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_update_execution",
+                name="ros2_medkit_update_execution",
                 description="Update an execution (e.g., stop capability). Use to control running actions.",
                 inputSchema={
                     "type": "object",
@@ -1347,8 +1420,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_cancel_execution",
-                description="Cancel a specific execution by its ID. Use sovd_list_executions to find the execution_id.",
+                name="ros2_medkit_cancel_execution",
+                description="Cancel a specific execution by its ID. Use ros2_medkit_list_executions to find the execution_id.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -1376,7 +1449,7 @@ def register_tools(
             ),
             # ==================== Configurations (ROS 2 Parameters) ====================
             Tool(
-                name="sovd_list_configurations",
+                name="ros2_medkit_list_configurations",
                 description="List all configurations (ROS 2 parameters) for an entity. Works with components, apps, areas, and functions.",
                 inputSchema={
                     "type": "object",
@@ -1396,8 +1469,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_get_configuration",
-                description="Get a specific configuration (parameter) value. Use sovd_list_configurations first to discover available parameters.",
+                name="ros2_medkit_get_configuration",
+                description="Get a specific configuration (parameter) value. Use ros2_medkit_list_configurations first to discover available parameters.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -1407,7 +1480,7 @@ def register_tools(
                         },
                         "param_name": {
                             "type": "string",
-                            "description": "The parameter name (use sovd_list_configurations to discover available parameters)",
+                            "description": "The parameter name (use ros2_medkit_list_configurations to discover available parameters)",
                         },
                         "entity_type": {
                             "type": "string",
@@ -1420,8 +1493,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_set_configuration",
-                description="Set a configuration (parameter) value. Use sovd_list_configurations first to discover available parameters and their current values.",
+                name="ros2_medkit_set_configuration",
+                description="Set a configuration (parameter) value. Use ros2_medkit_list_configurations first to discover available parameters and their current values.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -1447,8 +1520,8 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_delete_configuration",
-                description="Reset a configuration (parameter) to its default value. Use sovd_list_configurations first to see current parameter values.",
+                name="ros2_medkit_delete_configuration",
+                description="Reset a configuration (parameter) to its default value. Use ros2_medkit_list_configurations first to see current parameter values.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -1471,7 +1544,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_delete_all_configurations",
+                name="ros2_medkit_delete_all_configurations",
                 description="Reset all configurations (parameters) for an entity to their default values. WARNING: This affects all parameters - use with caution.",
                 inputSchema={
                     "type": "object",
@@ -1492,7 +1565,7 @@ def register_tools(
             ),
             # ==================== Data Discovery ====================
             Tool(
-                name="sovd_data_categories",
+                name="ros2_medkit_data_categories",
                 description="List data categories for an entity (e.g., topics, parameters).",
                 inputSchema={
                     "type": "object",
@@ -1512,7 +1585,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_data_groups",
+                name="ros2_medkit_data_groups",
                 description="List data groups for an entity.",
                 inputSchema={
                     "type": "object",
@@ -1533,7 +1606,7 @@ def register_tools(
             ),
             # ==================== Bulk Data ====================
             Tool(
-                name="sovd_bulkdata_categories",
+                name="ros2_medkit_bulkdata_categories",
                 description="List available bulk-data categories for an entity. Bulk-data categories contain downloadable files like rosbag recordings.",
                 inputSchema={
                     "type": "object",
@@ -1553,7 +1626,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_bulkdata_list",
+                name="ros2_medkit_bulkdata_list",
                 description="List bulk-data items in a category. Use this to discover available rosbag recordings for download.",
                 inputSchema={
                     "type": "object",
@@ -1577,7 +1650,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_bulkdata_info",
+                name="ros2_medkit_bulkdata_info",
                 description="Get information about a specific bulk-data item. Use the bulk_data_uri from fault environment_data snapshots.",
                 inputSchema={
                     "type": "object",
@@ -1591,7 +1664,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_bulkdata_download",
+                name="ros2_medkit_bulkdata_download",
                 description="Download a bulk-data file (e.g., rosbag recording) to the specified directory. Use the bulk_data_uri from fault environment_data snapshots.",
                 inputSchema={
                     "type": "object",
@@ -1610,7 +1683,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_bulkdata_download_for_fault",
+                name="ros2_medkit_bulkdata_download_for_fault",
                 description="Download all rosbag recordings associated with a specific fault. Retrieves the fault's environment_data and downloads all rosbag snapshots.",
                 inputSchema={
                     "type": "object",
@@ -1639,7 +1712,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_bulkdata_upload",
+                name="ros2_medkit_bulkdata_upload",
                 description="Upload a file to an entity's bulk data storage.",
                 inputSchema={
                     "type": "object",
@@ -1671,7 +1744,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_bulkdata_delete",
+                name="ros2_medkit_bulkdata_delete",
                 description="Delete a bulk data item.",
                 inputSchema={
                     "type": "object",
@@ -1700,7 +1773,7 @@ def register_tools(
             ),
             # ==================== Logs ====================
             Tool(
-                name="sovd_list_logs",
+                name="ros2_medkit_list_logs",
                 description="List log entries for an entity. Returns recent log messages.",
                 inputSchema={
                     "type": "object",
@@ -1720,7 +1793,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_get_log_configuration",
+                name="ros2_medkit_get_log_configuration",
                 description="Get log configuration for an entity.",
                 inputSchema={
                     "type": "object",
@@ -1740,7 +1813,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_set_log_configuration",
+                name="ros2_medkit_set_log_configuration",
                 description="Update log configuration for an entity.",
                 inputSchema={
                     "type": "object",
@@ -1765,7 +1838,7 @@ def register_tools(
             ),
             # ==================== Triggers ====================
             Tool(
-                name="sovd_list_triggers",
+                name="ros2_medkit_list_triggers",
                 description="List all triggers for an entity. Triggers monitor resource changes and generate events.",
                 inputSchema={
                     "type": "object",
@@ -1785,7 +1858,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_get_trigger",
+                name="ros2_medkit_get_trigger",
                 description="Get details of a specific trigger by ID.",
                 inputSchema={
                     "type": "object",
@@ -1809,7 +1882,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_create_trigger",
+                name="ros2_medkit_create_trigger",
                 description="Create a new trigger on an entity. Triggers monitor resources and fire events on change. Required fields in trigger_config: 'resource' (data URI to monitor), 'trigger_condition' (object with 'condition_type' string).",
                 inputSchema={
                     "type": "object",
@@ -1851,7 +1924,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_update_trigger",
+                name="ros2_medkit_update_trigger",
                 description="Update an existing trigger's configuration.",
                 inputSchema={
                     "type": "object",
@@ -1879,7 +1952,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_delete_trigger",
+                name="ros2_medkit_delete_trigger",
                 description="Delete a trigger from an entity.",
                 inputSchema={
                     "type": "object",
@@ -1904,7 +1977,7 @@ def register_tools(
             ),
             # ==================== Scripts ====================
             Tool(
-                name="sovd_list_scripts",
+                name="ros2_medkit_list_scripts",
                 description="List all scripts for an entity.",
                 inputSchema={
                     "type": "object",
@@ -1924,7 +1997,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_get_script",
+                name="ros2_medkit_get_script",
                 description="Get details of a specific script.",
                 inputSchema={
                     "type": "object",
@@ -1948,7 +2021,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_upload_script",
+                name="ros2_medkit_upload_script",
                 description="Upload a script to an entity.",
                 inputSchema={
                     "type": "object",
@@ -1972,7 +2045,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_execute_script",
+                name="ros2_medkit_execute_script",
                 description="Execute a script on an entity. Returns execution ID.",
                 inputSchema={
                     "type": "object",
@@ -2000,7 +2073,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_get_script_execution",
+                name="ros2_medkit_get_script_execution",
                 description="Get the status and result of a script execution.",
                 inputSchema={
                     "type": "object",
@@ -2028,7 +2101,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_control_script_execution",
+                name="ros2_medkit_control_script_execution",
                 description="Control a running script execution (stop, pause, etc.).",
                 inputSchema={
                     "type": "object",
@@ -2060,7 +2133,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_delete_script",
+                name="ros2_medkit_delete_script",
                 description="Delete a script from an entity.",
                 inputSchema={
                     "type": "object",
@@ -2085,7 +2158,7 @@ def register_tools(
             ),
             # ==================== Locking ====================
             Tool(
-                name="sovd_acquire_lock",
+                name="ros2_medkit_acquire_lock",
                 description="Acquire an exclusive lock on an entity for safe modifications. Required field in lock_config: 'lock_expiration' (integer, seconds until lock expires).",
                 inputSchema={
                     "type": "object",
@@ -2122,7 +2195,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_list_locks",
+                name="ros2_medkit_list_locks",
                 description="List all active locks on an entity.",
                 inputSchema={
                     "type": "object",
@@ -2142,7 +2215,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_get_lock",
+                name="ros2_medkit_get_lock",
                 description="Get details of a specific lock.",
                 inputSchema={
                     "type": "object",
@@ -2166,7 +2239,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_extend_lock",
+                name="ros2_medkit_extend_lock",
                 description="Extend the duration of an existing lock.",
                 inputSchema={
                     "type": "object",
@@ -2194,7 +2267,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_release_lock",
+                name="ros2_medkit_release_lock",
                 description="Release a lock on an entity.",
                 inputSchema={
                     "type": "object",
@@ -2219,7 +2292,7 @@ def register_tools(
             ),
             # ==================== Cyclic Subscriptions ====================
             Tool(
-                name="sovd_create_cyclic_sub",
+                name="ros2_medkit_create_cyclic_sub",
                 description="Create a cyclic data subscription for an entity. Subscribes to periodic data updates. Required fields in sub_config: 'resource' (data URI to observe), 'interval' ('fast', 'normal', or 'slow'), 'duration' (seconds). Optional: 'protocol' (default 'sse').",
                 inputSchema={
                     "type": "object",
@@ -2256,7 +2329,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_list_cyclic_subs",
+                name="ros2_medkit_list_cyclic_subs",
                 description="List all cyclic subscriptions for an entity.",
                 inputSchema={
                     "type": "object",
@@ -2276,7 +2349,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_get_cyclic_sub",
+                name="ros2_medkit_get_cyclic_sub",
                 description="Get details of a specific cyclic subscription.",
                 inputSchema={
                     "type": "object",
@@ -2300,7 +2373,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_update_cyclic_sub",
+                name="ros2_medkit_update_cyclic_sub",
                 description="Update a cyclic subscription's configuration.",
                 inputSchema={
                     "type": "object",
@@ -2328,7 +2401,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_delete_cyclic_sub",
+                name="ros2_medkit_delete_cyclic_sub",
                 description="Delete a cyclic subscription.",
                 inputSchema={
                     "type": "object",
@@ -2353,7 +2426,7 @@ def register_tools(
             ),
             # ==================== Software Updates ====================
             Tool(
-                name="sovd_list_updates",
+                name="ros2_medkit_list_updates",
                 description="List all registered software updates.",
                 inputSchema={
                     "type": "object",
@@ -2361,7 +2434,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_register_update",
+                name="ros2_medkit_register_update",
                 description="Register a new software update package.",
                 inputSchema={
                     "type": "object",
@@ -2379,7 +2452,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_get_update",
+                name="ros2_medkit_get_update",
                 description="Get details of a registered update.",
                 inputSchema={
                     "type": "object",
@@ -2393,7 +2466,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_get_update_status",
+                name="ros2_medkit_get_update_status",
                 description=(
                     "Get the current status of an update"
                     " (pending, preparing, ready, executing, complete, failed)."
@@ -2410,7 +2483,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_prepare_update",
+                name="ros2_medkit_prepare_update",
                 description="Prepare an update for execution (download, verify, stage).",
                 inputSchema={
                     "type": "object",
@@ -2428,7 +2501,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_execute_update",
+                name="ros2_medkit_execute_update",
                 description="Execute a prepared software update. WARNING: This triggers actual software installation on the target system. Ensure the update has been prepared successfully first.",
                 inputSchema={
                     "type": "object",
@@ -2446,7 +2519,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_automate_update",
+                name="ros2_medkit_automate_update",
                 description="Run automated update workflow (prepare + execute). WARNING: This triggers actual software installation on the target system. Use with caution.",
                 inputSchema={
                     "type": "object",
@@ -2467,7 +2540,7 @@ def register_tools(
                 },
             ),
             Tool(
-                name="sovd_delete_update",
+                name="ros2_medkit_delete_update",
                 description="Delete a registered update.",
                 inputSchema={
                     "type": "object",
@@ -2523,160 +2596,160 @@ def register_tools(
         normalized_name = TOOL_ALIASES.get(name, name)
 
         try:
-            if normalized_name == "sovd_version":
+            if normalized_name == "ros2_medkit_version":
                 result = await client.get_version()
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_entities_list":
+            elif normalized_name == "ros2_medkit_entities_list":
                 args = EntitiesListArgs(**arguments)
                 entities = await client.list_entities()
                 filtered = filter_entities(entities, args.filter)
                 return format_json_response(filtered)
 
-            elif normalized_name == "sovd_health":
+            elif normalized_name == "ros2_medkit_health":
                 result = await client.get_health()
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_areas_list":
+            elif normalized_name == "ros2_medkit_areas_list":
                 areas = await client.list_areas()
                 return format_json_response(areas)
 
-            elif normalized_name == "sovd_area_get":
+            elif normalized_name == "ros2_medkit_area_get":
                 args = AreaIdArgs(**arguments)
                 area = await client.get_area(args.area_id)
                 return format_json_response(area)
 
-            elif normalized_name == "sovd_components_list":
+            elif normalized_name == "ros2_medkit_components_list":
                 components = await client.list_components()
                 return format_json_response(components)
 
-            elif normalized_name == "sovd_component_get":
+            elif normalized_name == "ros2_medkit_component_get":
                 args = ComponentIdArgs(**arguments)
                 component = await client.get_component(args.component_id)
                 return format_json_response(component)
 
-            elif normalized_name == "sovd_entities_get":
+            elif normalized_name == "ros2_medkit_entities_get":
                 args = EntityGetArgs(**arguments)
                 entity = await client.get_entity(args.entity_id)
                 return format_json_response(entity)
 
-            elif normalized_name == "sovd_faults_list":
+            elif normalized_name == "ros2_medkit_faults_list":
                 args = FaultsListArgs(**arguments)
                 faults = await client.list_faults(args.entity_id, args.entity_type)
                 return format_fault_list(faults)
 
-            elif normalized_name == "sovd_faults_get":
+            elif normalized_name == "ros2_medkit_faults_get":
                 args = FaultGetArgs(**arguments)
                 fault = await client.get_fault(args.entity_id, args.fault_id, args.entity_type)
                 return format_fault_response(fault)
 
-            elif normalized_name == "sovd_faults_clear":
+            elif normalized_name == "ros2_medkit_faults_clear":
                 args = FaultGetArgs(**arguments)
                 result = await client.clear_fault(args.entity_id, args.fault_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_area_components":
+            elif normalized_name == "ros2_medkit_area_components":
                 args = AreaComponentsArgs(**arguments)
                 components = await client.list_area_components(args.area_id)
                 return format_json_response(components)
 
-            elif normalized_name == "sovd_area_subareas":
+            elif normalized_name == "ros2_medkit_area_subareas":
                 args = SubareasArgs(**arguments)
                 subareas = await client.list_area_subareas(args.area_id)
                 return format_json_response(subareas)
 
-            elif normalized_name == "sovd_area_contains":
+            elif normalized_name == "ros2_medkit_area_contains":
                 args = AreaContainsArgs(**arguments)
                 entities = await client.list_area_contains(args.area_id)
                 return format_json_response(entities)
 
             # ==================== Apps ====================
 
-            elif normalized_name == "sovd_apps_list":
+            elif normalized_name == "ros2_medkit_apps_list":
                 apps = await client.list_apps()
                 return format_json_response(apps)
 
-            elif normalized_name == "sovd_apps_get":
+            elif normalized_name == "ros2_medkit_apps_get":
                 args = AppIdArgs(**arguments)
                 app = await client.get_app(args.app_id)
                 return format_json_response(app)
 
-            elif normalized_name == "sovd_apps_dependencies":
+            elif normalized_name == "ros2_medkit_apps_dependencies":
                 args = AppIdArgs(**arguments)
                 deps = await client.list_app_dependencies(args.app_id)
                 return format_json_response(deps)
 
             # ==================== Functions ====================
 
-            elif normalized_name == "sovd_functions_list":
+            elif normalized_name == "ros2_medkit_functions_list":
                 functions = await client.list_functions()
                 return format_json_response(functions)
 
-            elif normalized_name == "sovd_functions_get":
+            elif normalized_name == "ros2_medkit_functions_get":
                 args = FunctionIdArgs(**arguments)
                 func = await client.get_function(args.function_id)
                 return format_json_response(func)
 
-            elif normalized_name == "sovd_functions_hosts":
+            elif normalized_name == "ros2_medkit_functions_hosts":
                 args = FunctionIdArgs(**arguments)
                 hosts = await client.list_function_hosts(args.function_id)
                 return format_json_response(hosts)
 
             # ==================== Component Relationships ====================
 
-            elif normalized_name == "sovd_component_subcomponents":
+            elif normalized_name == "ros2_medkit_component_subcomponents":
                 args = SubcomponentsArgs(**arguments)
                 subs = await client.list_component_subcomponents(args.component_id)
                 return format_json_response(subs)
 
-            elif normalized_name == "sovd_component_hosts":
+            elif normalized_name == "ros2_medkit_component_hosts":
                 args = ComponentHostsArgs(**arguments)
                 hosts = await client.list_component_hosts(args.component_id)
                 return format_json_response(hosts)
 
-            elif normalized_name == "sovd_component_dependencies":
+            elif normalized_name == "ros2_medkit_component_dependencies":
                 args = DependenciesArgs(**arguments)
                 deps = await client.list_component_dependencies(args.entity_id)
                 return format_json_response(deps)
 
             # ==================== Extended Faults ====================
 
-            elif normalized_name == "sovd_all_faults_list":
+            elif normalized_name == "ros2_medkit_all_faults_list":
                 faults = await client.list_all_faults()
                 return format_fault_list(faults)
 
-            elif normalized_name == "sovd_clear_all_faults":
+            elif normalized_name == "ros2_medkit_clear_all_faults":
                 args = ClearAllFaultsArgs(**arguments)
                 result = await client.clear_all_faults(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_fault_snapshots":
+            elif normalized_name == "ros2_medkit_fault_snapshots":
                 args = FaultSnapshotsArgs(**arguments)
                 snapshots = await client.get_fault_snapshots(
                     args.entity_id, args.fault_code, args.entity_type
                 )
                 return format_snapshots_response(snapshots)
 
-            elif normalized_name == "sovd_system_fault_snapshots":
+            elif normalized_name == "ros2_medkit_system_fault_snapshots":
                 args = SystemFaultSnapshotsArgs(**arguments)
                 snapshots = await client.get_system_fault_snapshots(args.fault_code)
                 return format_snapshots_response(snapshots)
 
             # ==================== Entity Data ====================
 
-            elif normalized_name == "sovd_entity_data":
+            elif normalized_name == "ros2_medkit_entity_data":
                 args = EntityDataArgs(**arguments)
                 data = await client.get_component_data(args.entity_id, args.entity_type)
                 return format_json_response(data)
 
-            elif normalized_name == "sovd_entity_topic_data":
+            elif normalized_name == "ros2_medkit_entity_topic_data":
                 args = EntityTopicDataArgs(**arguments)
                 data = await client.get_component_topic_data(
                     args.entity_id, args.topic_name, args.entity_type
                 )
                 return format_json_response(data)
 
-            elif normalized_name == "sovd_publish_topic":
+            elif normalized_name == "ros2_medkit_publish_topic":
                 args = PublishTopicArgs(**arguments)
                 result = await client.publish_to_topic(
                     args.entity_id, args.topic_name, args.data, args.entity_type
@@ -2685,19 +2758,19 @@ def register_tools(
 
             # ==================== Operations ====================
 
-            elif normalized_name == "sovd_list_operations":
+            elif normalized_name == "ros2_medkit_list_operations":
                 args = ListOperationsArgs(**arguments)
                 operations = await client.list_operations(args.entity_id, args.entity_type)
                 return format_json_response(operations)
 
-            elif normalized_name == "sovd_get_operation":
+            elif normalized_name == "ros2_medkit_get_operation":
                 args = GetOperationArgs(**arguments)
                 operation = await client.get_operation(
                     args.entity_id, args.operation_name, args.entity_type
                 )
                 return format_json_response(operation)
 
-            elif normalized_name == "sovd_create_execution":
+            elif normalized_name == "ros2_medkit_create_execution":
                 args = CreateExecutionArgs(**arguments)
                 result = await client.create_execution(
                     args.entity_id,
@@ -2707,14 +2780,14 @@ def register_tools(
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_list_executions":
+            elif normalized_name == "ros2_medkit_list_executions":
                 args = ListExecutionsArgs(**arguments)
                 executions = await client.list_executions(
                     args.entity_id, args.operation_name, args.entity_type
                 )
                 return format_json_response(executions)
 
-            elif normalized_name == "sovd_get_execution":
+            elif normalized_name == "ros2_medkit_get_execution":
                 args = ExecutionArgs(**arguments)
                 execution = await client.get_execution(
                     args.entity_id,
@@ -2724,7 +2797,7 @@ def register_tools(
                 )
                 return format_json_response(execution)
 
-            elif normalized_name == "sovd_update_execution":
+            elif normalized_name == "ros2_medkit_update_execution":
                 args = UpdateExecutionArgs(**arguments)
                 result = await client.update_execution(
                     args.entity_id,
@@ -2735,7 +2808,7 @@ def register_tools(
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_cancel_execution":
+            elif normalized_name == "ros2_medkit_cancel_execution":
                 args = ExecutionArgs(**arguments)
                 result = await client.cancel_execution(
                     args.entity_id,
@@ -2747,80 +2820,80 @@ def register_tools(
 
             # ==================== Configurations ====================
 
-            elif normalized_name == "sovd_list_configurations":
+            elif normalized_name == "ros2_medkit_list_configurations":
                 args = ListConfigurationsArgs(**arguments)
                 configs = await client.list_configurations(args.entity_id, args.entity_type)
                 return format_json_response(configs)
 
-            elif normalized_name == "sovd_get_configuration":
+            elif normalized_name == "ros2_medkit_get_configuration":
                 args = GetConfigurationArgs(**arguments)
                 config = await client.get_configuration(
                     args.entity_id, args.param_name, args.entity_type
                 )
                 return format_json_response(config)
 
-            elif normalized_name == "sovd_set_configuration":
+            elif normalized_name == "ros2_medkit_set_configuration":
                 args = SetConfigurationArgs(**arguments)
                 result = await client.set_configuration(
                     args.entity_id, args.param_name, args.value, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_delete_configuration":
+            elif normalized_name == "ros2_medkit_delete_configuration":
                 args = GetConfigurationArgs(**arguments)
                 result = await client.delete_configuration(
                     args.entity_id, args.param_name, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_delete_all_configurations":
+            elif normalized_name == "ros2_medkit_delete_all_configurations":
                 args = ListConfigurationsArgs(**arguments)
                 result = await client.delete_all_configurations(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
             # ==================== Data Discovery ====================
 
-            elif normalized_name == "sovd_data_categories":
+            elif normalized_name == "ros2_medkit_data_categories":
                 args = DataCategoriesArgs(**arguments)
                 result = await client.list_data_categories(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_data_groups":
+            elif normalized_name == "ros2_medkit_data_groups":
                 args = DataGroupsArgs(**arguments)
                 result = await client.list_data_groups(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
             # ==================== Bulk Data ====================
 
-            elif normalized_name == "sovd_bulkdata_categories":
+            elif normalized_name == "ros2_medkit_bulkdata_categories":
                 args = BulkDataCategoriesArgs(**arguments)
                 categories = await client.list_bulk_data_categories(
                     args.entity_id, args.entity_type
                 )
                 return format_bulkdata_categories(categories, args.entity_id)
 
-            elif normalized_name == "sovd_bulkdata_list":
+            elif normalized_name == "ros2_medkit_bulkdata_list":
                 args = BulkDataListArgs(**arguments)
                 items = await client.list_bulk_data(args.entity_id, args.category, args.entity_type)
                 return format_bulkdata_list(items, args.entity_id, args.category)
 
-            elif normalized_name == "sovd_bulkdata_info":
+            elif normalized_name == "ros2_medkit_bulkdata_info":
                 args = BulkDataInfoArgs(**arguments)
                 info = await client.get_bulk_data_info(args.bulk_data_uri)
                 return format_bulkdata_info(info)
 
-            elif normalized_name == "sovd_bulkdata_download":
+            elif normalized_name == "ros2_medkit_bulkdata_download":
                 args = BulkDataDownloadArgs(**arguments)
                 content, filename = await client.download_bulk_data(args.bulk_data_uri)
                 return save_bulk_data_file(content, filename, args.bulk_data_uri, args.output_dir)
 
-            elif normalized_name == "sovd_bulkdata_download_for_fault":
+            elif normalized_name == "ros2_medkit_bulkdata_download_for_fault":
                 args = BulkDataDownloadForFaultArgs(**arguments)
                 return await download_rosbags_for_fault(
                     client, args.entity_id, args.fault_code, args.entity_type, args.output_dir
                 )
 
-            elif normalized_name == "sovd_bulkdata_upload":
+            elif normalized_name == "ros2_medkit_bulkdata_upload":
                 args = BulkDataUploadArgs(**arguments)
                 try:
                     file_bytes = base64.b64decode(args.file_content)
@@ -2831,7 +2904,7 @@ def register_tools(
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_bulkdata_delete":
+            elif normalized_name == "ros2_medkit_bulkdata_delete":
                 args = BulkDataDeleteArgs(**arguments)
                 result = await client.delete_bulk_data_item(
                     args.entity_id, args.category, args.item_id, args.entity_type
@@ -2840,17 +2913,17 @@ def register_tools(
 
             # ==================== Logs ====================
 
-            elif normalized_name == "sovd_list_logs":
+            elif normalized_name == "ros2_medkit_list_logs":
                 args = ListLogsArgs(**arguments)
                 result = await client.list_logs(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_get_log_configuration":
+            elif normalized_name == "ros2_medkit_get_log_configuration":
                 args = GetLogConfigurationArgs(**arguments)
                 result = await client.get_log_configuration(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_set_log_configuration":
+            elif normalized_name == "ros2_medkit_set_log_configuration":
                 args = SetLogConfigurationArgs(**arguments)
                 result = await client.set_log_configuration(
                     args.entity_id, args.config, args.entity_type
@@ -2859,31 +2932,31 @@ def register_tools(
 
             # ==================== Triggers ====================
 
-            elif normalized_name == "sovd_list_triggers":
+            elif normalized_name == "ros2_medkit_list_triggers":
                 args = ListTriggersArgs(**arguments)
                 result = await client.list_triggers(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_get_trigger":
+            elif normalized_name == "ros2_medkit_get_trigger":
                 args = GetTriggerArgs(**arguments)
                 result = await client.get_trigger(args.entity_id, args.trigger_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_create_trigger":
+            elif normalized_name == "ros2_medkit_create_trigger":
                 args = CreateTriggerArgs(**arguments)
                 result = await client.create_trigger(
                     args.entity_id, args.trigger_config, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_update_trigger":
+            elif normalized_name == "ros2_medkit_update_trigger":
                 args = UpdateTriggerArgs(**arguments)
                 result = await client.update_trigger(
                     args.entity_id, args.trigger_id, args.trigger_config, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_delete_trigger":
+            elif normalized_name == "ros2_medkit_delete_trigger":
                 args = GetTriggerArgs(**arguments)
                 result = await client.delete_trigger(
                     args.entity_id, args.trigger_id, args.entity_type
@@ -2892,38 +2965,38 @@ def register_tools(
 
             # ==================== Scripts ====================
 
-            elif normalized_name == "sovd_list_scripts":
+            elif normalized_name == "ros2_medkit_list_scripts":
                 args = ListScriptsArgs(**arguments)
                 result = await client.list_scripts(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_get_script":
+            elif normalized_name == "ros2_medkit_get_script":
                 args = GetScriptArgs(**arguments)
                 result = await client.get_script(args.entity_id, args.script_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_upload_script":
+            elif normalized_name == "ros2_medkit_upload_script":
                 args = UploadScriptArgs(**arguments)
                 result = await client.upload_script(
                     args.entity_id, args.script_content, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_execute_script":
+            elif normalized_name == "ros2_medkit_execute_script":
                 args = ExecuteScriptArgs(**arguments)
                 result = await client.execute_script(
                     args.entity_id, args.script_id, args.params, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_get_script_execution":
+            elif normalized_name == "ros2_medkit_get_script_execution":
                 args = GetScriptExecutionArgs(**arguments)
                 result = await client.get_script_execution(
                     args.entity_id, args.script_id, args.execution_id, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_control_script_execution":
+            elif normalized_name == "ros2_medkit_control_script_execution":
                 args = ControlScriptExecutionArgs(**arguments)
                 result = await client.control_script_execution(
                     args.entity_id,
@@ -2934,7 +3007,7 @@ def register_tools(
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_delete_script":
+            elif normalized_name == "ros2_medkit_delete_script":
                 args = GetScriptArgs(**arguments)
                 result = await client.delete_script(
                     args.entity_id, args.script_id, args.entity_type
@@ -2943,64 +3016,64 @@ def register_tools(
 
             # ==================== Locking ====================
 
-            elif normalized_name == "sovd_acquire_lock":
+            elif normalized_name == "ros2_medkit_acquire_lock":
                 args = AcquireLockArgs(**arguments)
                 result = await client.acquire_lock(
                     args.entity_id, args.lock_config, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_list_locks":
+            elif normalized_name == "ros2_medkit_list_locks":
                 args = ListLocksArgs(**arguments)
                 result = await client.list_locks(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_get_lock":
+            elif normalized_name == "ros2_medkit_get_lock":
                 args = GetLockArgs(**arguments)
                 result = await client.get_lock(args.entity_id, args.lock_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_extend_lock":
+            elif normalized_name == "ros2_medkit_extend_lock":
                 args = ExtendLockArgs(**arguments)
                 result = await client.extend_lock(
                     args.entity_id, args.lock_id, args.lock_config, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_release_lock":
+            elif normalized_name == "ros2_medkit_release_lock":
                 args = GetLockArgs(**arguments)
                 result = await client.release_lock(args.entity_id, args.lock_id, args.entity_type)
                 return format_json_response(result)
 
             # ==================== Cyclic Subscriptions ====================
 
-            elif normalized_name == "sovd_create_cyclic_sub":
+            elif normalized_name == "ros2_medkit_create_cyclic_sub":
                 args = CreateCyclicSubArgs(**arguments)
                 result = await client.create_cyclic_subscription(
                     args.entity_id, args.sub_config, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_list_cyclic_subs":
+            elif normalized_name == "ros2_medkit_list_cyclic_subs":
                 args = ListCyclicSubsArgs(**arguments)
                 result = await client.list_cyclic_subscriptions(args.entity_id, args.entity_type)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_get_cyclic_sub":
+            elif normalized_name == "ros2_medkit_get_cyclic_sub":
                 args = GetCyclicSubArgs(**arguments)
                 result = await client.get_cyclic_subscription(
                     args.entity_id, args.subscription_id, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_update_cyclic_sub":
+            elif normalized_name == "ros2_medkit_update_cyclic_sub":
                 args = UpdateCyclicSubArgs(**arguments)
                 result = await client.update_cyclic_subscription(
                     args.entity_id, args.subscription_id, args.sub_config, args.entity_type
                 )
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_delete_cyclic_sub":
+            elif normalized_name == "ros2_medkit_delete_cyclic_sub":
                 args = GetCyclicSubArgs(**arguments)
                 result = await client.delete_cyclic_subscription(
                     args.entity_id, args.subscription_id, args.entity_type
@@ -3009,42 +3082,42 @@ def register_tools(
 
             # ==================== Software Updates ====================
 
-            elif normalized_name == "sovd_list_updates":
+            elif normalized_name == "ros2_medkit_list_updates":
                 ListUpdatesArgs(**arguments)
                 result = await client.list_updates()
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_register_update":
+            elif normalized_name == "ros2_medkit_register_update":
                 args = RegisterUpdateArgs(**arguments)
                 result = await client.register_update(args.update_config)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_get_update":
+            elif normalized_name == "ros2_medkit_get_update":
                 args = GetUpdateArgs(**arguments)
                 result = await client.get_update(args.update_id)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_get_update_status":
+            elif normalized_name == "ros2_medkit_get_update_status":
                 args = GetUpdateStatusArgs(**arguments)
                 result = await client.get_update_status(args.update_id)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_prepare_update":
+            elif normalized_name == "ros2_medkit_prepare_update":
                 args = PrepareUpdateArgs(**arguments)
                 result = await client.prepare_update(args.update_id, args.config)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_execute_update":
+            elif normalized_name == "ros2_medkit_execute_update":
                 args = ExecuteUpdateArgs(**arguments)
                 result = await client.execute_update(args.update_id, args.config)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_automate_update":
+            elif normalized_name == "ros2_medkit_automate_update":
                 args = AutomateUpdateArgs(**arguments)
                 result = await client.automate_update(args.update_id, args.config)
                 return format_json_response(result)
 
-            elif normalized_name == "sovd_delete_update":
+            elif normalized_name == "ros2_medkit_delete_update":
                 args = GetUpdateArgs(**arguments)
                 result = await client.delete_update(args.update_id)
                 return format_json_response(result)

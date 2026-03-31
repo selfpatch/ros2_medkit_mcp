@@ -36,15 +36,20 @@ class TestToolAliases:
     """Tests for tool alias resolution."""
 
     def test_alias_dot_notation(self) -> None:
-        """Test dot-notation aliases resolve to underscore names."""
-        assert TOOL_ALIASES.get("sovd.version") == "sovd_version"
-        assert TOOL_ALIASES.get("sovd.entities.list") == "sovd_entities_list"
-        assert TOOL_ALIASES.get("sovd.faults.list") == "sovd_faults_list"
+        """Test dot-notation aliases resolve to canonical names."""
+        assert TOOL_ALIASES.get("sovd.version") == "ros2_medkit_version"
+        assert TOOL_ALIASES.get("sovd.entities.list") == "ros2_medkit_entities_list"
+        assert TOOL_ALIASES.get("sovd.faults.list") == "ros2_medkit_faults_list"
 
     def test_canonical_name_unchanged(self) -> None:
         """Test canonical names resolve to themselves."""
-        assert TOOL_ALIASES.get("sovd_version") == "sovd_version"
-        assert TOOL_ALIASES.get("sovd_entities_list") == "sovd_entities_list"
+        assert TOOL_ALIASES.get("ros2_medkit_version") == "ros2_medkit_version"
+        assert TOOL_ALIASES.get("ros2_medkit_entities_list") == "ros2_medkit_entities_list"
+
+    def test_legacy_sovd_aliases(self) -> None:
+        """Test legacy sovd_* aliases resolve to ros2_medkit_* canonical names."""
+        assert TOOL_ALIASES.get("sovd_version") == "ros2_medkit_version"
+        assert TOOL_ALIASES.get("sovd_entities_list") == "ros2_medkit_entities_list"
 
 
 class TestFormatFunctions:
