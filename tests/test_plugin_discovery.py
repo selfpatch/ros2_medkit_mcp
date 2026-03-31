@@ -180,7 +180,7 @@ class TestPluginToolRegistration:
             def list_tools(self) -> list[Tool]:
                 return [
                     Tool(
-                        name="sovd_health",
+                        name="ros2_medkit_health",
                         description="Collides with built-in",
                         inputSchema={"type": "object", "properties": {}},
                     )
@@ -204,8 +204,8 @@ class TestPluginToolRegistration:
 
         assert "collides with built-in tool" in caplog.text
 
-        # sovd_health should appear exactly once (the built-in)
-        plugin_tool_names = [t.name for t in tools if t.name == "sovd_health"]
+        # ros2_medkit_health should appear exactly once (the built-in)
+        plugin_tool_names = [t.name for t in tools if t.name == "ros2_medkit_health"]
         assert len(plugin_tool_names) == 1
 
     @pytest.mark.asyncio
