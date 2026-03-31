@@ -667,6 +667,78 @@ class BulkDataListResponse(BaseModel):
 # ==================== Bulk Data Argument Models ====================
 
 
+class DataCategoriesArgs(BaseModel):
+    """Arguments for listing data categories."""
+
+    entity_id: str = Field(
+        ...,
+        description="The entity identifier",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
+class DataGroupsArgs(BaseModel):
+    """Arguments for listing data groups."""
+
+    entity_id: str = Field(
+        ...,
+        description="The entity identifier",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
+class BulkDataUploadArgs(BaseModel):
+    """Arguments for uploading a bulk-data file."""
+
+    entity_id: str = Field(
+        ...,
+        description="The entity identifier",
+    )
+    category: str = Field(
+        ...,
+        description="Category name (e.g., 'rosbags')",
+    )
+    file_content: str = Field(
+        ...,
+        description="Base64-encoded file content to upload",
+    )
+    filename: str = Field(
+        ...,
+        description="Filename for the uploaded file",
+    )
+    entity_type: str = Field(
+        default="apps",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
+class BulkDataDeleteArgs(BaseModel):
+    """Arguments for deleting a bulk-data item."""
+
+    entity_id: str = Field(
+        ...,
+        description="The entity identifier",
+    )
+    category: str = Field(
+        ...,
+        description="Category name (e.g., 'rosbags')",
+    )
+    item_id: str = Field(
+        ...,
+        description="The bulk-data item identifier",
+    )
+    entity_type: str = Field(
+        default="apps",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
 class BulkDataCategoriesArgs(BaseModel):
     """Arguments for listing bulk-data categories."""
 
