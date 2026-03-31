@@ -1017,6 +1017,69 @@ class UpdateCyclicSubArgs(BaseModel):
     )
 
 
+# ==================== Software Updates Argument Models ====================
+
+
+class ListUpdatesArgs(BaseModel):
+    """Arguments for sovd_list_updates tool."""
+
+    pass
+
+
+class RegisterUpdateArgs(BaseModel):
+    """Arguments for sovd_register_update tool."""
+
+    update_config: dict[str, Any] = Field(
+        ...,
+        description=(
+            "Update package configuration"
+            " (e.g., {'name': 'firmware-v2', 'version': '2.0.0', 'uri': 'https://...'})"
+        ),
+    )
+
+
+class GetUpdateArgs(BaseModel):
+    """Arguments for sovd_get_update and sovd_delete_update tools."""
+
+    update_id: str = Field(..., description="The update identifier")
+
+
+class GetUpdateStatusArgs(BaseModel):
+    """Arguments for sovd_get_update_status tool."""
+
+    update_id: str = Field(..., description="The update identifier")
+
+
+class PrepareUpdateArgs(BaseModel):
+    """Arguments for sovd_prepare_update tool."""
+
+    update_id: str = Field(..., description="The update identifier")
+    config: dict[str, Any] = Field(
+        ...,
+        description="Preparation configuration (e.g., {'verify_checksum': true})",
+    )
+
+
+class ExecuteUpdateArgs(BaseModel):
+    """Arguments for sovd_execute_update tool."""
+
+    update_id: str = Field(..., description="The update identifier")
+    config: dict[str, Any] = Field(
+        ...,
+        description="Execution configuration (e.g., {'reboot_after': true})",
+    )
+
+
+class AutomateUpdateArgs(BaseModel):
+    """Arguments for sovd_automate_update tool."""
+
+    update_id: str = Field(..., description="The update identifier")
+    config: dict[str, Any] = Field(
+        ...,
+        description="Automation configuration (e.g., {'verify_checksum': true, 'reboot_after': true})",
+    )
+
+
 class ToolResult(BaseModel):
     """Standard result wrapper for tool responses."""
 

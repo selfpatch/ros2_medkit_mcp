@@ -414,3 +414,110 @@ class TestSubscriptionsTools:
         result = await client.delete_cyclic_subscription("motor", "sub-1")
         assert result == {}
         await client.close()
+
+
+class TestUpdatesTools:
+    """Tests for software update management tools.
+
+    Updates are global endpoints (no entity type dispatch).
+    URLs are /updates, /updates/{update_id}, etc.
+    """
+
+    UPDATE_RESPONSE = {
+        "id": "upd-1",
+        "name": "firmware-v2",
+        "version": "2.0.0",
+        "status": "pending",
+    }
+
+    UPDATE_STATUS_RESPONSE = {
+        "status": "inProgress",
+        "progress": 50,
+    }
+
+    @respx.mock
+    async def test_list_updates(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/updates").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [self.UPDATE_RESPONSE]},
+            )
+        )
+        result = await client.list_updates()
+        assert len(result) == 1
+        assert result[0]["id"] == "upd-1"
+        assert result[0]["name"] == "firmware-v2"
+        await client.close()
+
+    @respx.mock
+    async def test_register_update(self, client: SovdClient) -> None:
+        respx.post("http://test-sovd:8080/api/v1/updates").mock(
+            return_value=httpx.Response(201, json=self.UPDATE_RESPONSE)
+        )
+        result = await client.register_update(
+            {"name": "firmware-v2", "version": "2.0.0", "uri": "https://example.com/fw.bin"}
+        )
+        assert result["id"] == "upd-1"
+        assert result["status"] == "pending"
+        await client.close()
+
+    @respx.mock
+    async def test_get_update(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/updates/upd-1").mock(
+            return_value=httpx.Response(200, json=self.UPDATE_RESPONSE)
+        )
+        result = await client.get_update("upd-1")
+        assert result["id"] == "upd-1"
+        assert result["version"] == "2.0.0"
+        await client.close()
+
+    @respx.mock
+    async def test_get_update_status(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/updates/upd-1/status").mock(
+            return_value=httpx.Response(200, json=self.UPDATE_STATUS_RESPONSE)
+        )
+        result = await client.get_update_status("upd-1")
+        assert result["status"] == "inProgress"
+        assert result["progress"] == 50
+        await client.close()
+
+    @respx.mock
+    async def test_delete_update(self, client: SovdClient) -> None:
+        respx.delete("http://test-sovd:8080/api/v1/updates/upd-1").mock(
+            return_value=httpx.Response(204)
+        )
+        result = await client.delete_update("upd-1")
+        assert result == {}
+        await client.close()
+
+    @respx.mock
+    async def test_prepare_update(self, client: SovdClient) -> None:
+        # prepare_update returns 202 Accepted; generated client returns None for 202
+        respx.put("http://test-sovd:8080/api/v1/updates/upd-1/prepare").mock(
+            return_value=httpx.Response(202)
+        )
+        result = await client.prepare_update("upd-1", {"verify_checksum": True})
+        assert result == {}
+        await client.close()
+
+    @respx.mock
+    async def test_execute_update(self, client: SovdClient) -> None:
+        # execute_update returns 202 Accepted; generated client returns None for 202
+        respx.put("http://test-sovd:8080/api/v1/updates/upd-1/execute").mock(
+            return_value=httpx.Response(202)
+        )
+        result = await client.execute_update("upd-1", {"reboot_after": True})
+        assert result == {}
+        await client.close()
+
+    @respx.mock
+    async def test_automate_update(self, client: SovdClient) -> None:
+        # automate_update returns 202 Accepted; generated client returns None for 202
+        respx.put("http://test-sovd:8080/api/v1/updates/upd-1/automated").mock(
+            return_value=httpx.Response(202)
+        )
+        result = await client.automate_update(
+            "upd-1", {"verify_checksum": True, "reboot_after": True}
+        )
+        assert result == {}
+        await client.close()

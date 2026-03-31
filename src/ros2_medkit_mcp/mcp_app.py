@@ -20,6 +20,7 @@ from ros2_medkit_mcp.models import (
     AreaComponentsArgs,
     AreaContainsArgs,
     AreaIdArgs,
+    AutomateUpdateArgs,
     BulkDataCategoriesArgs,
     BulkDataDownloadArgs,
     BulkDataDownloadForFaultArgs,
@@ -40,6 +41,7 @@ from ros2_medkit_mcp.models import (
     EntityTopicDataArgs,
     EnvironmentData,
     ExecuteScriptArgs,
+    ExecuteUpdateArgs,
     ExecutionArgs,
     ExtendedDataRecords,
     ExtendLockArgs,
@@ -57,6 +59,8 @@ from ros2_medkit_mcp.models import (
     GetScriptArgs,
     GetScriptExecutionArgs,
     GetTriggerArgs,
+    GetUpdateArgs,
+    GetUpdateStatusArgs,
     ListConfigurationsArgs,
     ListCyclicSubsArgs,
     ListExecutionsArgs,
@@ -65,7 +69,10 @@ from ros2_medkit_mcp.models import (
     ListOperationsArgs,
     ListScriptsArgs,
     ListTriggersArgs,
+    ListUpdatesArgs,
+    PrepareUpdateArgs,
     PublishTopicArgs,
+    RegisterUpdateArgs,
     RosbagSnapshot,
     SetConfigurationArgs,
     SetLogConfigurationArgs,
@@ -679,6 +686,15 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_get_cyclic_sub": "sovd_get_cyclic_sub",
     "sovd_update_cyclic_sub": "sovd_update_cyclic_sub",
     "sovd_delete_cyclic_sub": "sovd_delete_cyclic_sub",
+    # Software Updates
+    "sovd_list_updates": "sovd_list_updates",
+    "sovd_register_update": "sovd_register_update",
+    "sovd_get_update": "sovd_get_update",
+    "sovd_get_update_status": "sovd_get_update_status",
+    "sovd_prepare_update": "sovd_prepare_update",
+    "sovd_execute_update": "sovd_execute_update",
+    "sovd_automate_update": "sovd_automate_update",
+    "sovd_delete_update": "sovd_delete_update",
 }
 
 
@@ -2108,6 +2124,135 @@ def register_tools(
                     "required": ["entity_id", "subscription_id"],
                 },
             ),
+            # ==================== Software Updates ====================
+            Tool(
+                name="sovd_list_updates",
+                description="List all registered software updates.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                },
+            ),
+            Tool(
+                name="sovd_register_update",
+                description="Register a new software update package.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "update_config": {
+                            "type": "object",
+                            "description": (
+                                "Update package configuration"
+                                " (e.g., {'name': 'firmware-v2', 'version': '2.0.0',"
+                                " 'uri': 'https://...'})"
+                            ),
+                        },
+                    },
+                    "required": ["update_config"],
+                },
+            ),
+            Tool(
+                name="sovd_get_update",
+                description="Get details of a registered update.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "update_id": {
+                            "type": "string",
+                            "description": "The update identifier",
+                        },
+                    },
+                    "required": ["update_id"],
+                },
+            ),
+            Tool(
+                name="sovd_get_update_status",
+                description=(
+                    "Get the current status of an update"
+                    " (pending, preparing, ready, executing, complete, failed)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "update_id": {
+                            "type": "string",
+                            "description": "The update identifier",
+                        },
+                    },
+                    "required": ["update_id"],
+                },
+            ),
+            Tool(
+                name="sovd_prepare_update",
+                description="Prepare an update for execution (download, verify, stage).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "update_id": {
+                            "type": "string",
+                            "description": "The update identifier",
+                        },
+                        "config": {
+                            "type": "object",
+                            "description": "Preparation configuration (e.g., {'verify_checksum': true})",
+                        },
+                    },
+                    "required": ["update_id", "config"],
+                },
+            ),
+            Tool(
+                name="sovd_execute_update",
+                description="Execute a prepared update.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "update_id": {
+                            "type": "string",
+                            "description": "The update identifier",
+                        },
+                        "config": {
+                            "type": "object",
+                            "description": "Execution configuration (e.g., {'reboot_after': true})",
+                        },
+                    },
+                    "required": ["update_id", "config"],
+                },
+            ),
+            Tool(
+                name="sovd_automate_update",
+                description="Run full automated update flow (prepare + execute).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "update_id": {
+                            "type": "string",
+                            "description": "The update identifier",
+                        },
+                        "config": {
+                            "type": "object",
+                            "description": (
+                                "Automation configuration"
+                                " (e.g., {'verify_checksum': true, 'reboot_after': true})"
+                            ),
+                        },
+                    },
+                    "required": ["update_id", "config"],
+                },
+            ),
+            Tool(
+                name="sovd_delete_update",
+                description="Delete a registered update.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "update_id": {
+                            "type": "string",
+                            "description": "The update identifier",
+                        },
+                    },
+                    "required": ["update_id"],
+                },
+            ),
         ]
         # Append plugin tools
         if plugins:
@@ -2596,6 +2741,48 @@ def register_tools(
                 result = await client.delete_cyclic_subscription(
                     args.entity_id, args.subscription_id, args.entity_type
                 )
+                return format_json_response(result)
+
+            # ==================== Software Updates ====================
+
+            elif normalized_name == "sovd_list_updates":
+                ListUpdatesArgs(**arguments)
+                result = await client.list_updates()
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_register_update":
+                args = RegisterUpdateArgs(**arguments)
+                result = await client.register_update(args.update_config)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_get_update":
+                args = GetUpdateArgs(**arguments)
+                result = await client.get_update(args.update_id)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_get_update_status":
+                args = GetUpdateStatusArgs(**arguments)
+                result = await client.get_update_status(args.update_id)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_prepare_update":
+                args = PrepareUpdateArgs(**arguments)
+                result = await client.prepare_update(args.update_id, args.config)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_execute_update":
+                args = ExecuteUpdateArgs(**arguments)
+                result = await client.execute_update(args.update_id, args.config)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_automate_update":
+                args = AutomateUpdateArgs(**arguments)
+                result = await client.automate_update(args.update_id, args.config)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_delete_update":
+                args = GetUpdateArgs(**arguments)
+                result = await client.delete_update(args.update_id)
                 return format_json_response(result)
 
             else:

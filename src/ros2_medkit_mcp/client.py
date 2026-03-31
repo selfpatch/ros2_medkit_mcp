@@ -31,6 +31,7 @@ from ros2_medkit_client.api import (
     server,
     subscriptions,
     triggers,
+    updates,
 )
 
 from ros2_medkit_mcp.config import Settings
@@ -1229,6 +1230,81 @@ class SovdClient:
                     _entity_id_kwarg(entity_type): entity_id,
                     "subscription_id": subscription_id,
                 },
+            )
+            if result is None:
+                return {}
+            return _to_dict(result)
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+
+    # ==================== Software Updates ====================
+
+    async def list_updates(self) -> list[dict[str, Any]]:
+        return _extract_items(await self._call(updates.list_updates.asyncio))
+
+    async def register_update(self, update_config: dict[str, Any]) -> dict[str, Any]:
+        return await self._call(updates.register_update.asyncio, body=update_config)
+
+    async def get_update(self, update_id: str) -> dict[str, Any]:
+        return await self._call(updates.get_update.asyncio, update_id=update_id)
+
+    async def get_update_status(self, update_id: str) -> dict[str, Any]:
+        return await self._call(updates.get_update_status.asyncio, update_id=update_id)
+
+    async def prepare_update(self, update_id: str, config: dict[str, Any]) -> dict[str, Any]:
+        # prepare_update returns 202 Accepted on success.
+        # The generated client returns None for 202, which MedkitClient.call()
+        # treats as an error. Call the function directly and treat None as success.
+        return await self._call_update_action(
+            updates.prepare_update.asyncio, update_id=update_id, body=config
+        )
+
+    async def execute_update(self, update_id: str, config: dict[str, Any]) -> dict[str, Any]:
+        # execute_update returns 202 Accepted on success.
+        return await self._call_update_action(
+            updates.execute_update.asyncio, update_id=update_id, body=config
+        )
+
+    async def automate_update(self, update_id: str, config: dict[str, Any]) -> dict[str, Any]:
+        # automate_update returns 202 Accepted on success.
+        return await self._call_update_action(
+            updates.automate_update.asyncio, update_id=update_id, body=config
+        )
+
+    async def _call_update_action(self, api_func: Any, **kwargs: Any) -> dict[str, Any]:
+        """Call a generated update action function that returns 202 with None body.
+
+        The generated client returns None for 202 Accepted, which MedkitClient.call()
+        treats as an error. Call the function directly and treat None as success.
+        """
+        if "body" in kwargs and isinstance(kwargs["body"], dict):
+            kwargs["body"] = _wrap_body_dict(api_func, kwargs["body"])
+        client = await self._ensure_client()
+        try:
+            result = await api_func(client=client.http, **kwargs)
+            if result is None:
+                return {}
+            return _to_dict(result)
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+
+    async def delete_update(self, update_id: str) -> dict[str, Any]:
+        # delete_update returns 204 No Content on success.
+        # The generated client returns None for 204, which MedkitClient.call()
+        # treats as an error. Call the function directly and treat None as success.
+        client = await self._ensure_client()
+        try:
+            result = await updates.delete_update.asyncio(
+                client=client.http,
+                update_id=update_id,
             )
             if result is None:
                 return {}
