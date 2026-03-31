@@ -28,6 +28,7 @@ from ros2_medkit_mcp.models import (
     ClearAllFaultsArgs,
     ComponentHostsArgs,
     ComponentIdArgs,
+    ControlScriptExecutionArgs,
     CreateExecutionArgs,
     CreateTriggerArgs,
     DependenciesArgs,
@@ -36,6 +37,7 @@ from ros2_medkit_mcp.models import (
     EntityGetArgs,
     EntityTopicDataArgs,
     EnvironmentData,
+    ExecuteScriptArgs,
     ExecutionArgs,
     ExtendedDataRecords,
     FaultGetArgs,
@@ -47,11 +49,14 @@ from ros2_medkit_mcp.models import (
     GetConfigurationArgs,
     GetLogConfigurationArgs,
     GetOperationArgs,
+    GetScriptArgs,
+    GetScriptExecutionArgs,
     GetTriggerArgs,
     ListConfigurationsArgs,
     ListExecutionsArgs,
     ListLogsArgs,
     ListOperationsArgs,
+    ListScriptsArgs,
     ListTriggersArgs,
     PublishTopicArgs,
     RosbagSnapshot,
@@ -63,6 +68,7 @@ from ros2_medkit_mcp.models import (
     ToolResult,
     UpdateExecutionArgs,
     UpdateTriggerArgs,
+    UploadScriptArgs,
     filter_entities,
 )
 from ros2_medkit_mcp.plugin import McpPlugin
@@ -646,6 +652,13 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_create_trigger": "sovd_create_trigger",
     "sovd_update_trigger": "sovd_update_trigger",
     "sovd_delete_trigger": "sovd_delete_trigger",
+    # Scripts
+    "sovd_list_scripts": "sovd_list_scripts",
+    "sovd_get_script": "sovd_get_script",
+    "sovd_upload_script": "sovd_upload_script",
+    "sovd_execute_script": "sovd_execute_script",
+    "sovd_get_script_execution": "sovd_get_script_execution",
+    "sovd_control_script_execution": "sovd_control_script_execution",
 }
 
 
@@ -1692,6 +1705,157 @@ def register_tools(
                     "required": ["entity_id", "trigger_id"],
                 },
             ),
+            # ==================== Scripts ====================
+            Tool(
+                name="sovd_list_scripts",
+                description="List all scripts for an entity.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id"],
+                },
+            ),
+            Tool(
+                name="sovd_get_script",
+                description="Get details of a specific script.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "script_id": {
+                            "type": "string",
+                            "description": "The script identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "script_id"],
+                },
+            ),
+            Tool(
+                name="sovd_upload_script",
+                description="Upload a script to an entity.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "script_content": {
+                            "type": "string",
+                            "description": "The script content as a string (will be uploaded as binary)",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "script_content"],
+                },
+            ),
+            Tool(
+                name="sovd_execute_script",
+                description="Execute a script on an entity. Returns execution ID.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "script_id": {
+                            "type": "string",
+                            "description": "The script identifier",
+                        },
+                        "params": {
+                            "type": "object",
+                            "description": "Optional parameters to pass to the script execution",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "script_id"],
+                },
+            ),
+            Tool(
+                name="sovd_get_script_execution",
+                description="Get the status and result of a script execution.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "script_id": {
+                            "type": "string",
+                            "description": "The script identifier",
+                        },
+                        "execution_id": {
+                            "type": "string",
+                            "description": "The execution identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "script_id", "execution_id"],
+                },
+            ),
+            Tool(
+                name="sovd_control_script_execution",
+                description="Control a running script execution (stop, pause, etc.).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "script_id": {
+                            "type": "string",
+                            "description": "The script identifier",
+                        },
+                        "execution_id": {
+                            "type": "string",
+                            "description": "The execution identifier",
+                        },
+                        "action": {
+                            "type": "object",
+                            "description": "Control action (e.g., {'command': 'stop'} or {'command': 'pause'})",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "script_id", "execution_id", "action"],
+                },
+            ),
         ]
         # Append plugin tools
         if plugins:
@@ -2069,6 +2233,50 @@ def register_tools(
                 args = GetTriggerArgs(**arguments)
                 result = await client.delete_trigger(
                     args.entity_id, args.trigger_id, args.entity_type
+                )
+                return format_json_response(result)
+
+            # ==================== Scripts ====================
+
+            elif normalized_name == "sovd_list_scripts":
+                args = ListScriptsArgs(**arguments)
+                result = await client.list_scripts(args.entity_id, args.entity_type)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_get_script":
+                args = GetScriptArgs(**arguments)
+                result = await client.get_script(args.entity_id, args.script_id, args.entity_type)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_upload_script":
+                args = UploadScriptArgs(**arguments)
+                result = await client.upload_script(
+                    args.entity_id, args.script_content, args.entity_type
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_execute_script":
+                args = ExecuteScriptArgs(**arguments)
+                result = await client.execute_script(
+                    args.entity_id, args.script_id, args.params, args.entity_type
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_get_script_execution":
+                args = GetScriptExecutionArgs(**arguments)
+                result = await client.get_script_execution(
+                    args.entity_id, args.script_id, args.execution_id, args.entity_type
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_control_script_execution":
+                args = ControlScriptExecutionArgs(**arguments)
+                result = await client.control_script_execution(
+                    args.entity_id,
+                    args.script_id,
+                    args.execution_id,
+                    args.action,
+                    args.entity_type,
                 )
                 return format_json_response(result)
 

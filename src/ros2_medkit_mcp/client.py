@@ -26,6 +26,7 @@ from ros2_medkit_client.api import (
     faults,
     logs,
     operations,
+    scripts,
     server,
     triggers,
 )
@@ -302,6 +303,36 @@ _ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
             "apps": triggers.delete_app_trigger,
             "areas": triggers.delete_area_trigger,
             "functions": triggers.delete_function_trigger,
+        },
+    },
+    "scripts": {
+        "list": {
+            "components": scripts.list_component_scripts,
+            "apps": scripts.list_app_scripts,
+        },
+        "get": {
+            "components": scripts.get_component_script,
+            "apps": scripts.get_app_script,
+        },
+        "upload": {
+            "components": scripts.upload_component_script,
+            "apps": scripts.upload_app_script,
+        },
+        "execute": {
+            "components": scripts.start_component_script_execution,
+            "apps": scripts.start_app_script_execution,
+        },
+        "get_execution": {
+            "components": scripts.get_component_script_execution,
+            "apps": scripts.get_app_script_execution,
+        },
+        "control_execution": {
+            "components": scripts.control_component_script_execution,
+            "apps": scripts.control_app_script_execution,
+        },
+        "delete": {
+            "components": scripts.delete_component_script,
+            "apps": scripts.delete_app_script,
         },
     },
 }
@@ -891,6 +922,127 @@ class SovdClient:
             result = await fn(
                 client=client.http,
                 **{_entity_id_kwarg(entity_type): entity_id, "trigger_id": trigger_id},
+            )
+            if result is None:
+                return {}
+            return _to_dict(result)
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+
+    # ==================== Scripts ====================
+
+    async def list_scripts(
+        self, entity_id: str, entity_type: str = "components"
+    ) -> list[dict[str, Any]]:
+        fn = _entity_func("scripts", "list", entity_type)
+        return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
+
+    async def get_script(
+        self, entity_id: str, script_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("scripts", "get", entity_type)
+        return await self._call(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "script_id": script_id}
+        )
+
+    async def upload_script(
+        self, entity_id: str, script_content: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("scripts", "upload", entity_type)
+        # upload_script expects a File object (binary upload), not a dict body.
+        # Build the File object from the script content string.
+        import io
+
+        from ros2_medkit_client._generated.types import File
+
+        file_obj = File(
+            payload=io.BytesIO(script_content.encode("utf-8")),
+            file_name="script.py",
+            mime_type="application/octet-stream",
+        )
+        client = await self._ensure_client()
+        try:
+            result = await fn(
+                client=client.http,
+                **{_entity_id_kwarg(entity_type): entity_id, "body": file_obj},
+            )
+            if result is None:
+                return {}
+            return _to_dict(result)
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+
+    async def execute_script(
+        self,
+        entity_id: str,
+        script_id: str,
+        params: dict[str, Any] | None = None,
+        entity_type: str = "components",
+    ) -> dict[str, Any]:
+        fn = _entity_func("scripts", "execute", entity_type)
+        kwargs: dict[str, Any] = {
+            _entity_id_kwarg(entity_type): entity_id,
+            "script_id": script_id,
+            "body": params if params else {},
+        }
+        return await self._call(fn, **kwargs)
+
+    async def get_script_execution(
+        self,
+        entity_id: str,
+        script_id: str,
+        execution_id: str,
+        entity_type: str = "components",
+    ) -> dict[str, Any]:
+        fn = _entity_func("scripts", "get_execution", entity_type)
+        return await self._call(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "script_id": script_id,
+                "execution_id": execution_id,
+            },
+        )
+
+    async def control_script_execution(
+        self,
+        entity_id: str,
+        script_id: str,
+        execution_id: str,
+        action: dict[str, Any],
+        entity_type: str = "components",
+    ) -> dict[str, Any]:
+        fn = _entity_func("scripts", "control_execution", entity_type)
+        return await self._call(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "script_id": script_id,
+                "execution_id": execution_id,
+                "body": action,
+            },
+        )
+
+    async def delete_script(
+        self, entity_id: str, script_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("scripts", "delete", entity_type)
+        # delete_script returns 204 No Content on success.
+        # The generated client returns None for 204, which MedkitClient.call()
+        # treats as an error. Call the function directly and treat None as success.
+        client = await self._ensure_client()
+        try:
+            result = await fn(
+                client=client.http,
+                **{_entity_id_kwarg(entity_type): entity_id, "script_id": script_id},
             )
             if result is None:
                 return {}
