@@ -29,6 +29,7 @@ from ros2_medkit_mcp.models import (
     ComponentHostsArgs,
     ComponentIdArgs,
     CreateExecutionArgs,
+    CreateTriggerArgs,
     DependenciesArgs,
     EntitiesListArgs,
     EntityDataArgs,
@@ -46,10 +47,12 @@ from ros2_medkit_mcp.models import (
     GetConfigurationArgs,
     GetLogConfigurationArgs,
     GetOperationArgs,
+    GetTriggerArgs,
     ListConfigurationsArgs,
     ListExecutionsArgs,
     ListLogsArgs,
     ListOperationsArgs,
+    ListTriggersArgs,
     PublishTopicArgs,
     RosbagSnapshot,
     SetConfigurationArgs,
@@ -59,6 +62,7 @@ from ros2_medkit_mcp.models import (
     SystemFaultSnapshotsArgs,
     ToolResult,
     UpdateExecutionArgs,
+    UpdateTriggerArgs,
     filter_entities,
 )
 from ros2_medkit_mcp.plugin import McpPlugin
@@ -636,6 +640,12 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_list_logs": "sovd_list_logs",
     "sovd_get_log_configuration": "sovd_get_log_configuration",
     "sovd_set_log_configuration": "sovd_set_log_configuration",
+    # Triggers
+    "sovd_list_triggers": "sovd_list_triggers",
+    "sovd_get_trigger": "sovd_get_trigger",
+    "sovd_create_trigger": "sovd_create_trigger",
+    "sovd_update_trigger": "sovd_update_trigger",
+    "sovd_delete_trigger": "sovd_delete_trigger",
 }
 
 
@@ -1566,6 +1576,122 @@ def register_tools(
                     "required": ["entity_id", "config"],
                 },
             ),
+            # ==================== Triggers ====================
+            Tool(
+                name="sovd_list_triggers",
+                description="List all triggers for an entity. Triggers monitor resource changes and generate events.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id"],
+                },
+            ),
+            Tool(
+                name="sovd_get_trigger",
+                description="Get details of a specific trigger by ID.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "trigger_id": {
+                            "type": "string",
+                            "description": "The trigger identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "trigger_id"],
+                },
+            ),
+            Tool(
+                name="sovd_create_trigger",
+                description="Create a new trigger on an entity. Triggers monitor resources and fire events on change.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "trigger_config": {
+                            "type": "object",
+                            "description": "Trigger configuration (e.g., {'resource': '/data/temperature', 'interval': 'fast', 'duration': 60})",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "trigger_config"],
+                },
+            ),
+            Tool(
+                name="sovd_update_trigger",
+                description="Update an existing trigger's configuration.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "trigger_id": {
+                            "type": "string",
+                            "description": "The trigger identifier",
+                        },
+                        "trigger_config": {
+                            "type": "object",
+                            "description": "Updated trigger configuration",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "trigger_id", "trigger_config"],
+                },
+            ),
+            Tool(
+                name="sovd_delete_trigger",
+                description="Delete a trigger from an entity.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "trigger_id": {
+                            "type": "string",
+                            "description": "The trigger identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "trigger_id"],
+                },
+            ),
         ]
         # Append plugin tools
         if plugins:
@@ -1910,6 +2036,39 @@ def register_tools(
                 args = SetLogConfigurationArgs(**arguments)
                 result = await client.set_log_configuration(
                     args.entity_id, args.config, args.entity_type
+                )
+                return format_json_response(result)
+
+            # ==================== Triggers ====================
+
+            elif normalized_name == "sovd_list_triggers":
+                args = ListTriggersArgs(**arguments)
+                result = await client.list_triggers(args.entity_id, args.entity_type)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_get_trigger":
+                args = GetTriggerArgs(**arguments)
+                result = await client.get_trigger(args.entity_id, args.trigger_id, args.entity_type)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_create_trigger":
+                args = CreateTriggerArgs(**arguments)
+                result = await client.create_trigger(
+                    args.entity_id, args.trigger_config, args.entity_type
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_update_trigger":
+                args = UpdateTriggerArgs(**arguments)
+                result = await client.update_trigger(
+                    args.entity_id, args.trigger_id, args.trigger_config, args.entity_type
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_delete_trigger":
+                args = GetTriggerArgs(**arguments)
+                result = await client.delete_trigger(
+                    args.entity_id, args.trigger_id, args.entity_type
                 )
                 return format_json_response(result)
 

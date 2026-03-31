@@ -78,3 +78,80 @@ class TestLogsTools:
         # 204 No Content returns empty dict
         assert result == {}
         await client.close()
+
+
+class TestTriggersTools:
+    """Tests for trigger management tools.
+
+    The generated client models (Trigger, TriggerList, TriggerCreateRequest,
+    TriggerUpdateRequest) require specific SOVD-compliant fields in request/response
+    bodies. Mock responses must include all required fields for the model's from_dict()
+    to succeed.
+    """
+
+    # Reusable trigger response matching the generated Trigger model schema
+    TRIGGER_RESPONSE = {
+        "id": "t1",
+        "event_source": "/events",
+        "observed_resource": "/data/temperature",
+        "protocol": "sse",
+        "status": "active",
+        "trigger_condition": {"condition_type": "on_change"},
+    }
+
+    @respx.mock
+    async def test_list_triggers(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/triggers").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [self.TRIGGER_RESPONSE]},
+            )
+        )
+        result = await client.list_triggers("motor")
+        assert len(result) == 1
+        assert result[0]["id"] == "t1"
+        assert result[0]["observed_resource"] == "/data/temperature"
+        await client.close()
+
+    @respx.mock
+    async def test_get_trigger(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/triggers/t1").mock(
+            return_value=httpx.Response(200, json=self.TRIGGER_RESPONSE)
+        )
+        result = await client.get_trigger("motor", "t1")
+        assert result["id"] == "t1"
+        assert result["status"] == "active"
+        await client.close()
+
+    @respx.mock
+    async def test_create_trigger(self, client: SovdClient) -> None:
+        respx.post("http://test-sovd:8080/api/v1/components/motor/triggers").mock(
+            return_value=httpx.Response(201, json=self.TRIGGER_RESPONSE)
+        )
+        result = await client.create_trigger(
+            "motor",
+            {
+                "resource": "/data/temperature",
+                "trigger_condition": {"condition_type": "on_change"},
+            },
+        )
+        assert result["id"] == "t1"
+        await client.close()
+
+    @respx.mock
+    async def test_update_trigger(self, client: SovdClient) -> None:
+        respx.put("http://test-sovd:8080/api/v1/components/motor/triggers/t1").mock(
+            return_value=httpx.Response(200, json=self.TRIGGER_RESPONSE)
+        )
+        result = await client.update_trigger("motor", "t1", {"lifetime": 120})
+        assert result["id"] == "t1"
+        await client.close()
+
+    @respx.mock
+    async def test_delete_trigger(self, client: SovdClient) -> None:
+        respx.delete("http://test-sovd:8080/api/v1/components/motor/triggers/t1").mock(
+            return_value=httpx.Response(204)
+        )
+        result = await client.delete_trigger("motor", "t1")
+        assert result == {}
+        await client.close()
