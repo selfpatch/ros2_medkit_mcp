@@ -260,3 +260,85 @@ class TestScriptsTools:
         result = await client.delete_script("motor", "s1")
         assert result == {}
         await client.close()
+
+
+class TestLockingTools:
+    """Tests for lock management tools.
+
+    Locks are only supported on components and apps (not areas or functions).
+    """
+
+    # Lock model requires: id, lock_expiration (ISO 8601), owned (bool)
+    LOCK_RESPONSE = {
+        "id": "lock-1",
+        "lock_expiration": "2026-01-01T01:00:00Z",
+        "owned": True,
+        "scopes": ["write"],
+    }
+
+    LOCK_REQUEST = {
+        "id": "lock-1",
+        "lock_expiration": "2026-01-01T01:00:00Z",
+        "owned": True,
+    }
+
+    @respx.mock
+    async def test_acquire_lock(self, client: SovdClient) -> None:
+        respx.post("http://test-sovd:8080/api/v1/components/motor/locks").mock(
+            return_value=httpx.Response(201, json=self.LOCK_RESPONSE)
+        )
+        result = await client.acquire_lock("motor", self.LOCK_REQUEST)
+        assert result["id"] == "lock-1"
+        assert result["owned"] is True
+        await client.close()
+
+    @respx.mock
+    async def test_list_locks(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/locks").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [self.LOCK_RESPONSE]},
+            )
+        )
+        result = await client.list_locks("motor")
+        assert len(result) == 1
+        assert result[0]["id"] == "lock-1"
+        await client.close()
+
+    @respx.mock
+    async def test_get_lock(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/locks/lock-1").mock(
+            return_value=httpx.Response(200, json=self.LOCK_RESPONSE)
+        )
+        result = await client.get_lock("motor", "lock-1")
+        assert result["id"] == "lock-1"
+        assert result["owned"] is True
+        await client.close()
+
+    @respx.mock
+    async def test_extend_lock(self, client: SovdClient) -> None:
+        extended_response = {
+            **self.LOCK_RESPONSE,
+            "lock_expiration": "2026-01-01T02:00:00Z",
+        }
+        extend_body = {
+            "id": "lock-1",
+            "lock_expiration": "2026-01-01T02:00:00Z",
+            "owned": True,
+        }
+        respx.put("http://test-sovd:8080/api/v1/components/motor/locks/lock-1").mock(
+            return_value=httpx.Response(200, json=extended_response)
+        )
+        result = await client.extend_lock("motor", "lock-1", extend_body)
+        assert result["id"] == "lock-1"
+        assert result["lock_expiration"] == "2026-01-01T02:00:00+00:00"
+        await client.close()
+
+    @respx.mock
+    async def test_release_lock(self, client: SovdClient) -> None:
+        respx.delete("http://test-sovd:8080/api/v1/components/motor/locks/lock-1").mock(
+            return_value=httpx.Response(204)
+        )
+        result = await client.release_lock("motor", "lock-1")
+        assert result == {}
+        await client.close()

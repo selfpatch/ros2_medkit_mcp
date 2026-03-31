@@ -24,6 +24,7 @@ from ros2_medkit_client.api import (
     data,
     discovery,
     faults,
+    locking,
     logs,
     operations,
     scripts,
@@ -333,6 +334,28 @@ _ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
         "delete": {
             "components": scripts.delete_component_script,
             "apps": scripts.delete_app_script,
+        },
+    },
+    "locking": {
+        "acquire": {
+            "components": locking.acquire_component_lock,
+            "apps": locking.acquire_app_lock,
+        },
+        "list": {
+            "components": locking.list_component_locks,
+            "apps": locking.list_app_locks,
+        },
+        "get": {
+            "components": locking.get_component_lock,
+            "apps": locking.get_app_lock,
+        },
+        "extend": {
+            "components": locking.extend_component_lock,
+            "apps": locking.extend_app_lock,
+        },
+        "release": {
+            "components": locking.release_component_lock,
+            "apps": locking.release_app_lock,
         },
     },
 }
@@ -1043,6 +1066,70 @@ class SovdClient:
             result = await fn(
                 client=client.http,
                 **{_entity_id_kwarg(entity_type): entity_id, "script_id": script_id},
+            )
+            if result is None:
+                return {}
+            return _to_dict(result)
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+
+    # ==================== Locking ====================
+
+    async def acquire_lock(
+        self, entity_id: str, lock_config: dict[str, Any], entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("locking", "acquire", entity_type)
+        return await self._call(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "body": lock_config}
+        )
+
+    async def list_locks(
+        self, entity_id: str, entity_type: str = "components"
+    ) -> list[dict[str, Any]]:
+        fn = _entity_func("locking", "list", entity_type)
+        return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
+
+    async def get_lock(
+        self, entity_id: str, lock_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("locking", "get", entity_type)
+        return await self._call(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "lock_id": lock_id}
+        )
+
+    async def extend_lock(
+        self,
+        entity_id: str,
+        lock_id: str,
+        lock_config: dict[str, Any],
+        entity_type: str = "components",
+    ) -> dict[str, Any]:
+        fn = _entity_func("locking", "extend", entity_type)
+        return await self._call(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "lock_id": lock_id,
+                "body": lock_config,
+            },
+        )
+
+    async def release_lock(
+        self, entity_id: str, lock_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("locking", "release", entity_type)
+        # release_lock returns 204 No Content on success.
+        # The generated client returns None for 204, which MedkitClient.call()
+        # treats as an error. Call the function directly and treat None as success.
+        client = await self._ensure_client()
+        try:
+            result = await fn(
+                client=client.http,
+                **{_entity_id_kwarg(entity_type): entity_id, "lock_id": lock_id},
             )
             if result is None:
                 return {}

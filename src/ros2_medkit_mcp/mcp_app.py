@@ -15,6 +15,7 @@ from mcp.types import Resource, TextContent, Tool
 from ros2_medkit_mcp.client import SovdClient, SovdClientError
 from ros2_medkit_mcp.config import Settings
 from ros2_medkit_mcp.models import (
+    AcquireLockArgs,
     AppIdArgs,
     AreaComponentsArgs,
     AreaContainsArgs,
@@ -40,6 +41,7 @@ from ros2_medkit_mcp.models import (
     ExecuteScriptArgs,
     ExecutionArgs,
     ExtendedDataRecords,
+    ExtendLockArgs,
     FaultGetArgs,
     FaultItem,
     FaultsListArgs,
@@ -47,6 +49,7 @@ from ros2_medkit_mcp.models import (
     FreezeFrameSnapshot,
     FunctionIdArgs,
     GetConfigurationArgs,
+    GetLockArgs,
     GetLogConfigurationArgs,
     GetOperationArgs,
     GetScriptArgs,
@@ -54,6 +57,7 @@ from ros2_medkit_mcp.models import (
     GetTriggerArgs,
     ListConfigurationsArgs,
     ListExecutionsArgs,
+    ListLocksArgs,
     ListLogsArgs,
     ListOperationsArgs,
     ListScriptsArgs,
@@ -659,6 +663,12 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_execute_script": "sovd_execute_script",
     "sovd_get_script_execution": "sovd_get_script_execution",
     "sovd_control_script_execution": "sovd_control_script_execution",
+    # Locking
+    "sovd_acquire_lock": "sovd_acquire_lock",
+    "sovd_list_locks": "sovd_list_locks",
+    "sovd_get_lock": "sovd_get_lock",
+    "sovd_extend_lock": "sovd_extend_lock",
+    "sovd_release_lock": "sovd_release_lock",
 }
 
 
@@ -1856,6 +1866,122 @@ def register_tools(
                     "required": ["entity_id", "script_id", "execution_id", "action"],
                 },
             ),
+            # ==================== Locking ====================
+            Tool(
+                name="sovd_acquire_lock",
+                description="Acquire an exclusive lock on an entity for safe modifications.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "lock_config": {
+                            "type": "object",
+                            "description": "Lock configuration (e.g., {'duration': 60, 'reason': 'maintenance'})",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "lock_config"],
+                },
+            ),
+            Tool(
+                name="sovd_list_locks",
+                description="List all active locks on an entity.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id"],
+                },
+            ),
+            Tool(
+                name="sovd_get_lock",
+                description="Get details of a specific lock.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "lock_id": {
+                            "type": "string",
+                            "description": "The lock identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "lock_id"],
+                },
+            ),
+            Tool(
+                name="sovd_extend_lock",
+                description="Extend the duration of an existing lock.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "lock_id": {
+                            "type": "string",
+                            "description": "The lock identifier",
+                        },
+                        "lock_config": {
+                            "type": "object",
+                            "description": "Lock extension configuration (e.g., {'duration': 120})",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "lock_id", "lock_config"],
+                },
+            ),
+            Tool(
+                name="sovd_release_lock",
+                description="Release a lock on an entity.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "lock_id": {
+                            "type": "string",
+                            "description": "The lock identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Entity type: 'components' or 'apps'",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "lock_id"],
+                },
+            ),
         ]
         # Append plugin tools
         if plugins:
@@ -2278,6 +2404,37 @@ def register_tools(
                     args.action,
                     args.entity_type,
                 )
+                return format_json_response(result)
+
+            # ==================== Locking ====================
+
+            elif normalized_name == "sovd_acquire_lock":
+                args = AcquireLockArgs(**arguments)
+                result = await client.acquire_lock(
+                    args.entity_id, args.lock_config, args.entity_type
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_list_locks":
+                args = ListLocksArgs(**arguments)
+                result = await client.list_locks(args.entity_id, args.entity_type)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_get_lock":
+                args = GetLockArgs(**arguments)
+                result = await client.get_lock(args.entity_id, args.lock_id, args.entity_type)
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_extend_lock":
+                args = ExtendLockArgs(**arguments)
+                result = await client.extend_lock(
+                    args.entity_id, args.lock_id, args.lock_config, args.entity_type
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_release_lock":
+                args = GetLockArgs(**arguments)
+                result = await client.release_lock(args.entity_id, args.lock_id, args.entity_type)
                 return format_json_response(result)
 
             else:

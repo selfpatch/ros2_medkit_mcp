@@ -911,6 +911,59 @@ class ControlScriptExecutionArgs(BaseModel):
     )
 
 
+# ==================== Locking Argument Models ====================
+
+
+class AcquireLockArgs(BaseModel):
+    """Arguments for sovd_acquire_lock tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    lock_config: dict[str, Any] = Field(
+        ...,
+        description="Lock configuration (e.g., {'duration': 60, 'reason': 'maintenance'})",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
+class ListLocksArgs(BaseModel):
+    """Arguments for sovd_list_locks tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
+class GetLockArgs(BaseModel):
+    """Arguments for sovd_get_lock and sovd_release_lock tools."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    lock_id: str = Field(..., description="The lock identifier")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
+class ExtendLockArgs(BaseModel):
+    """Arguments for sovd_extend_lock tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    lock_id: str = Field(..., description="The lock identifier")
+    lock_config: dict[str, Any] = Field(
+        ...,
+        description="Lock extension configuration (e.g., {'duration': 120})",
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components' or 'apps'",
+    )
+
+
 class ToolResult(BaseModel):
     """Standard result wrapper for tool responses."""
 
