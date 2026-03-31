@@ -706,7 +706,8 @@ class BulkDataUploadArgs(BaseModel):
     )
     file_content: str = Field(
         ...,
-        description="Base64-encoded file content to upload",
+        max_length=67_108_864,  # ~50MB base64 encoded
+        description="Base64-encoded file content to upload (max ~50MB)",
     )
     filename: str = Field(
         ...,
@@ -932,6 +933,7 @@ class UploadScriptArgs(BaseModel):
     entity_id: str = Field(..., description="The entity identifier")
     script_content: str = Field(
         ...,
+        max_length=102400,  # 100KB max
         description="The script content as a string (will be uploaded as binary)",
     )
     entity_type: str = Field(

@@ -508,6 +508,34 @@ class SovdClient:
         except (ValueError, KeyError) as e:
             raise SovdClientError(message=f"Failed to parse response: {e}") from e
 
+    async def _call_void(self, api_func: Any, **kwargs: Any) -> dict[str, Any]:
+        """Call a generated API function that may return 204/202 (None).
+
+        Unlike _call(), this handles endpoints that return no body on success.
+        The generated client returns None for 204/202, which MedkitClient.call()
+        treats as an error. This method calls the function directly, treating
+        None as success and checking for GenericError responses.
+        """
+        if "body" in kwargs and isinstance(kwargs["body"], dict):
+            kwargs["body"] = _wrap_body_dict(api_func, kwargs["body"])
+        client = await self._ensure_client()
+        try:
+            result = await api_func(client=client.http, **kwargs)
+            if result is None:
+                return {}
+            # Check for GenericError (gateway returned 4xx/5xx)
+            if hasattr(result, "error_code") and hasattr(result, "message"):
+                error_code = getattr(result, "error_code", "unknown")
+                message = getattr(result, "message", "Unknown error")
+                raise SovdClientError(message=f"[{error_code}] {message}")
+            return _to_dict(result)
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+
     async def _raw_request(self, method: str, path: str) -> Any:
         """Make a raw HTTP request for endpoints not in the generated client
         (fault snapshots). Path segments must be pre-encoded by the caller."""
@@ -928,28 +956,14 @@ class SovdClient:
         entity_type: str = "apps",
     ) -> dict[str, Any]:
         fn = _entity_func("bulk_data", "delete", entity_type)
-        # delete returns 204 No Content on success.
-        # The generated client returns None for 204, which MedkitClient.call()
-        # treats as an error. Call the function directly and treat None as success.
-        client = await self._ensure_client()
-        try:
-            result = await fn(
-                client=client.http,
-                **{
-                    _entity_id_kwarg(entity_type): entity_id,
-                    "category_id": category,
-                    "file_id": item_id,
-                },
-            )
-            if result is None:
-                return {}
-            return _to_dict(result)
-        except httpx.TimeoutException as e:
-            raise SovdClientError(message=f"Request timed out: {e}") from e
-        except httpx.RequestError as e:
-            raise SovdClientError(message=f"Request failed: {e}") from e
-        except (ValueError, KeyError) as e:
-            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+        return await self._call_void(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "category_id": category,
+                "file_id": item_id,
+            },
+        )
 
     async def upload_bulk_data(
         self,
@@ -970,25 +984,14 @@ class SovdClient:
             file_name=filename,
             mime_type="application/octet-stream",
         )
-        client = await self._ensure_client()
-        try:
-            result = await fn(
-                client=client.http,
-                **{
-                    _entity_id_kwarg(entity_type): entity_id,
-                    "category_id": category,
-                    "body": file_obj,
-                },
-            )
-            if result is None:
-                return {}
-            return _to_dict(result)
-        except httpx.TimeoutException as e:
-            raise SovdClientError(message=f"Request timed out: {e}") from e
-        except httpx.RequestError as e:
-            raise SovdClientError(message=f"Request failed: {e}") from e
-        except (ValueError, KeyError) as e:
-            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+        return await self._call_void(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "category_id": category,
+                "body": file_obj,
+            },
+        )
 
     # ==================== Logs ====================
 
@@ -1008,26 +1011,9 @@ class SovdClient:
         self, entity_id: str, config: dict[str, Any], entity_type: str = "components"
     ) -> dict[str, Any]:
         fn = _entity_func("logs", "set_config", entity_type)
-        # set_log_configuration returns 204 No Content on success.
-        # The generated client returns None for 204, which MedkitClient.call()
-        # treats as an error. Call the function directly and treat None as success.
-        if isinstance(config, dict):
-            config = _wrap_body_dict(fn, config)
-        client = await self._ensure_client()
-        try:
-            result = await fn(
-                client=client.http,
-                **{_entity_id_kwarg(entity_type): entity_id, "body": config},
-            )
-            if result is None:
-                return {}
-            return _to_dict(result)
-        except httpx.TimeoutException as e:
-            raise SovdClientError(message=f"Request timed out: {e}") from e
-        except httpx.RequestError as e:
-            raise SovdClientError(message=f"Request failed: {e}") from e
-        except (ValueError, KeyError) as e:
-            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+        return await self._call_void(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "body": config}
+        )
 
     # ==================== Triggers ====================
 
@@ -1074,24 +1060,9 @@ class SovdClient:
         self, entity_id: str, trigger_id: str, entity_type: str = "components"
     ) -> dict[str, Any]:
         fn = _entity_func("triggers", "delete", entity_type)
-        # delete_trigger returns 204 No Content on success.
-        # The generated client returns None for 204, which MedkitClient.call()
-        # treats as an error. Call the function directly and treat None as success.
-        client = await self._ensure_client()
-        try:
-            result = await fn(
-                client=client.http,
-                **{_entity_id_kwarg(entity_type): entity_id, "trigger_id": trigger_id},
-            )
-            if result is None:
-                return {}
-            return _to_dict(result)
-        except httpx.TimeoutException as e:
-            raise SovdClientError(message=f"Request timed out: {e}") from e
-        except httpx.RequestError as e:
-            raise SovdClientError(message=f"Request failed: {e}") from e
-        except (ValueError, KeyError) as e:
-            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+        return await self._call_void(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "trigger_id": trigger_id}
+        )
 
     # ==================== Scripts ====================
 
@@ -1124,21 +1095,9 @@ class SovdClient:
             file_name="script.py",
             mime_type="application/octet-stream",
         )
-        client = await self._ensure_client()
-        try:
-            result = await fn(
-                client=client.http,
-                **{_entity_id_kwarg(entity_type): entity_id, "body": file_obj},
-            )
-            if result is None:
-                return {}
-            return _to_dict(result)
-        except httpx.TimeoutException as e:
-            raise SovdClientError(message=f"Request timed out: {e}") from e
-        except httpx.RequestError as e:
-            raise SovdClientError(message=f"Request failed: {e}") from e
-        except (ValueError, KeyError) as e:
-            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+        return await self._call_void(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "body": file_obj}
+        )
 
     async def execute_script(
         self,
@@ -1195,24 +1154,9 @@ class SovdClient:
         self, entity_id: str, script_id: str, entity_type: str = "components"
     ) -> dict[str, Any]:
         fn = _entity_func("scripts", "delete", entity_type)
-        # delete_script returns 204 No Content on success.
-        # The generated client returns None for 204, which MedkitClient.call()
-        # treats as an error. Call the function directly and treat None as success.
-        client = await self._ensure_client()
-        try:
-            result = await fn(
-                client=client.http,
-                **{_entity_id_kwarg(entity_type): entity_id, "script_id": script_id},
-            )
-            if result is None:
-                return {}
-            return _to_dict(result)
-        except httpx.TimeoutException as e:
-            raise SovdClientError(message=f"Request timed out: {e}") from e
-        except httpx.RequestError as e:
-            raise SovdClientError(message=f"Request failed: {e}") from e
-        except (ValueError, KeyError) as e:
-            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+        return await self._call_void(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "script_id": script_id}
+        )
 
     # ==================== Locking ====================
 
@@ -1259,24 +1203,9 @@ class SovdClient:
         self, entity_id: str, lock_id: str, entity_type: str = "components"
     ) -> dict[str, Any]:
         fn = _entity_func("locking", "release", entity_type)
-        # release_lock returns 204 No Content on success.
-        # The generated client returns None for 204, which MedkitClient.call()
-        # treats as an error. Call the function directly and treat None as success.
-        client = await self._ensure_client()
-        try:
-            result = await fn(
-                client=client.http,
-                **{_entity_id_kwarg(entity_type): entity_id, "lock_id": lock_id},
-            )
-            if result is None:
-                return {}
-            return _to_dict(result)
-        except httpx.TimeoutException as e:
-            raise SovdClientError(message=f"Request timed out: {e}") from e
-        except httpx.RequestError as e:
-            raise SovdClientError(message=f"Request failed: {e}") from e
-        except (ValueError, KeyError) as e:
-            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+        return await self._call_void(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "lock_id": lock_id}
+        )
 
     # ==================== Cyclic Subscriptions ====================
 
@@ -1327,27 +1256,13 @@ class SovdClient:
         self, entity_id: str, subscription_id: str, entity_type: str = "components"
     ) -> dict[str, Any]:
         fn = _entity_func("subscriptions", "delete", entity_type)
-        # delete_subscription returns 204 No Content on success.
-        # The generated client returns None for 204, which MedkitClient.call()
-        # treats as an error. Call the function directly and treat None as success.
-        client = await self._ensure_client()
-        try:
-            result = await fn(
-                client=client.http,
-                **{
-                    _entity_id_kwarg(entity_type): entity_id,
-                    "subscription_id": subscription_id,
-                },
-            )
-            if result is None:
-                return {}
-            return _to_dict(result)
-        except httpx.TimeoutException as e:
-            raise SovdClientError(message=f"Request timed out: {e}") from e
-        except httpx.RequestError as e:
-            raise SovdClientError(message=f"Request failed: {e}") from e
-        except (ValueError, KeyError) as e:
-            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+        return await self._call_void(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "subscription_id": subscription_id,
+            },
+        )
 
     # ==================== Software Updates ====================
 
@@ -1384,45 +1299,11 @@ class SovdClient:
         )
 
     async def _call_update_action(self, api_func: Any, **kwargs: Any) -> dict[str, Any]:
-        """Call a generated update action function that returns 202 with None body.
-
-        The generated client returns None for 202 Accepted, which MedkitClient.call()
-        treats as an error. Call the function directly and treat None as success.
-        """
-        if "body" in kwargs and isinstance(kwargs["body"], dict):
-            kwargs["body"] = _wrap_body_dict(api_func, kwargs["body"])
-        client = await self._ensure_client()
-        try:
-            result = await api_func(client=client.http, **kwargs)
-            if result is None:
-                return {}
-            return _to_dict(result)
-        except httpx.TimeoutException as e:
-            raise SovdClientError(message=f"Request timed out: {e}") from e
-        except httpx.RequestError as e:
-            raise SovdClientError(message=f"Request failed: {e}") from e
-        except (ValueError, KeyError) as e:
-            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+        """Call a generated update action function that returns 202 with None body."""
+        return await self._call_void(api_func, **kwargs)
 
     async def delete_update(self, update_id: str) -> dict[str, Any]:
-        # delete_update returns 204 No Content on success.
-        # The generated client returns None for 204, which MedkitClient.call()
-        # treats as an error. Call the function directly and treat None as success.
-        client = await self._ensure_client()
-        try:
-            result = await updates.delete_update.asyncio(
-                client=client.http,
-                update_id=update_id,
-            )
-            if result is None:
-                return {}
-            return _to_dict(result)
-        except httpx.TimeoutException as e:
-            raise SovdClientError(message=f"Request timed out: {e}") from e
-        except httpx.RequestError as e:
-            raise SovdClientError(message=f"Request failed: {e}") from e
-        except (ValueError, KeyError) as e:
-            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+        return await self._call_void(updates.delete_update.asyncio, update_id=update_id)
 
 
 @asynccontextmanager
