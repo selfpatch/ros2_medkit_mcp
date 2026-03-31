@@ -248,7 +248,7 @@ class TestScriptsTools:
         respx.put(
             "http://test-sovd:8080/api/v1/components/motor/scripts/s1/executions/exec-1"
         ).mock(return_value=httpx.Response(200, json=execution_stopped))
-        result = await client.control_script_execution("motor", "s1", "exec-1", {"command": "stop"})
+        result = await client.control_script_execution("motor", "s1", "exec-1", {"action": "stop"})
         assert result["status"] == "stopped"
         await client.close()
 
@@ -277,9 +277,7 @@ class TestLockingTools:
     }
 
     LOCK_REQUEST = {
-        "id": "lock-1",
-        "lock_expiration": "2026-01-01T01:00:00Z",
-        "owned": True,
+        "lock_expiration": 3600,
     }
 
     @respx.mock
@@ -317,21 +315,14 @@ class TestLockingTools:
 
     @respx.mock
     async def test_extend_lock(self, client: SovdClient) -> None:
-        extended_response = {
-            **self.LOCK_RESPONSE,
-            "lock_expiration": "2026-01-01T02:00:00Z",
-        }
         extend_body = {
-            "id": "lock-1",
-            "lock_expiration": "2026-01-01T02:00:00Z",
-            "owned": True,
+            "lock_expiration": 7200,
         }
         respx.put("http://test-sovd:8080/api/v1/components/motor/locks/lock-1").mock(
-            return_value=httpx.Response(200, json=extended_response)
+            return_value=httpx.Response(204)
         )
         result = await client.extend_lock("motor", "lock-1", extend_body)
-        assert result["id"] == "lock-1"
-        assert result["lock_expiration"] == "2026-01-01T02:00:00+00:00"
+        assert result == {}
         await client.close()
 
     @respx.mock

@@ -1161,11 +1161,20 @@ class SovdClient:
     # ==================== Locking ====================
 
     async def acquire_lock(
-        self, entity_id: str, lock_config: dict[str, Any], entity_type: str = "components"
+        self,
+        entity_id: str,
+        lock_config: dict[str, Any],
+        entity_type: str = "components",
+        client_id: str = "ros2_medkit_mcp",
     ) -> dict[str, Any]:
         fn = _entity_func("locking", "acquire", entity_type)
         return await self._call(
-            fn, **{_entity_id_kwarg(entity_type): entity_id, "body": lock_config}
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "body": lock_config,
+                "x_client_id": client_id,
+            },
         )
 
     async def list_locks(
@@ -1188,23 +1197,34 @@ class SovdClient:
         lock_id: str,
         lock_config: dict[str, Any],
         entity_type: str = "components",
+        client_id: str = "ros2_medkit_mcp",
     ) -> dict[str, Any]:
         fn = _entity_func("locking", "extend", entity_type)
-        return await self._call(
+        return await self._call_void(
             fn,
             **{
                 _entity_id_kwarg(entity_type): entity_id,
                 "lock_id": lock_id,
                 "body": lock_config,
+                "x_client_id": client_id,
             },
         )
 
     async def release_lock(
-        self, entity_id: str, lock_id: str, entity_type: str = "components"
+        self,
+        entity_id: str,
+        lock_id: str,
+        entity_type: str = "components",
+        client_id: str = "ros2_medkit_mcp",
     ) -> dict[str, Any]:
         fn = _entity_func("locking", "release", entity_type)
         return await self._call_void(
-            fn, **{_entity_id_kwarg(entity_type): entity_id, "lock_id": lock_id}
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "lock_id": lock_id,
+                "x_client_id": client_id,
+            },
         )
 
     # ==================== Cyclic Subscriptions ====================
