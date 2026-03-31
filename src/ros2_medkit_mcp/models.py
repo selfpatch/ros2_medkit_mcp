@@ -777,6 +777,59 @@ class SetLogConfigurationArgs(BaseModel):
     )
 
 
+# ==================== Triggers Argument Models ====================
+
+
+class ListTriggersArgs(BaseModel):
+    """Arguments for sovd_list_triggers tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
+class GetTriggerArgs(BaseModel):
+    """Arguments for sovd_get_trigger tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    trigger_id: str = Field(..., description="The trigger identifier")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
+class CreateTriggerArgs(BaseModel):
+    """Arguments for sovd_create_trigger tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    trigger_config: dict[str, Any] = Field(
+        ...,
+        description=(
+            "Trigger configuration"
+            " (e.g., {'resource': '/data/temperature', 'interval': 'fast', 'duration': 60})"
+        ),
+    )
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
+class UpdateTriggerArgs(BaseModel):
+    """Arguments for sovd_update_trigger tool."""
+
+    entity_id: str = Field(..., description="The entity identifier")
+    trigger_id: str = Field(..., description="The trigger identifier")
+    trigger_config: dict[str, Any] = Field(..., description="Updated trigger configuration")
+    entity_type: str = Field(
+        default="components",
+        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
+    )
+
+
 class ToolResult(BaseModel):
     """Standard result wrapper for tool responses."""
 

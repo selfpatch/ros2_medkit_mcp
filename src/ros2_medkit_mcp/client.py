@@ -27,6 +27,7 @@ from ros2_medkit_client.api import (
     logs,
     operations,
     server,
+    triggers,
 )
 
 from ros2_medkit_mcp.config import Settings
@@ -269,6 +270,38 @@ _ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
             "apps": logs.set_app_log_configuration,
             "areas": logs.set_area_log_configuration,
             "functions": logs.set_function_log_configuration,
+        },
+    },
+    "triggers": {
+        "list": {
+            "components": triggers.list_component_triggers,
+            "apps": triggers.list_app_triggers,
+            "areas": triggers.list_area_triggers,
+            "functions": triggers.list_function_triggers,
+        },
+        "get": {
+            "components": triggers.get_component_trigger,
+            "apps": triggers.get_app_trigger,
+            "areas": triggers.get_area_trigger,
+            "functions": triggers.get_function_trigger,
+        },
+        "create": {
+            "components": triggers.create_component_trigger,
+            "apps": triggers.create_app_trigger,
+            "areas": triggers.create_area_trigger,
+            "functions": triggers.create_function_trigger,
+        },
+        "update": {
+            "components": triggers.update_component_trigger,
+            "apps": triggers.update_app_trigger,
+            "areas": triggers.update_area_trigger,
+            "functions": triggers.update_function_trigger,
+        },
+        "delete": {
+            "components": triggers.delete_component_trigger,
+            "apps": triggers.delete_app_trigger,
+            "areas": triggers.delete_area_trigger,
+            "functions": triggers.delete_function_trigger,
         },
     },
 }
@@ -794,6 +827,70 @@ class SovdClient:
             result = await fn(
                 client=client.http,
                 **{_entity_id_kwarg(entity_type): entity_id, "body": config},
+            )
+            if result is None:
+                return {}
+            return _to_dict(result)
+        except httpx.TimeoutException as e:
+            raise SovdClientError(message=f"Request timed out: {e}") from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+        except (ValueError, KeyError) as e:
+            raise SovdClientError(message=f"Failed to parse response: {e}") from e
+
+    # ==================== Triggers ====================
+
+    async def list_triggers(
+        self, entity_id: str, entity_type: str = "components"
+    ) -> list[dict[str, Any]]:
+        fn = _entity_func("triggers", "list", entity_type)
+        return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
+
+    async def get_trigger(
+        self, entity_id: str, trigger_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("triggers", "get", entity_type)
+        return await self._call(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "trigger_id": trigger_id}
+        )
+
+    async def create_trigger(
+        self, entity_id: str, trigger_config: dict[str, Any], entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("triggers", "create", entity_type)
+        return await self._call(
+            fn, **{_entity_id_kwarg(entity_type): entity_id, "body": trigger_config}
+        )
+
+    async def update_trigger(
+        self,
+        entity_id: str,
+        trigger_id: str,
+        trigger_config: dict[str, Any],
+        entity_type: str = "components",
+    ) -> dict[str, Any]:
+        fn = _entity_func("triggers", "update", entity_type)
+        return await self._call(
+            fn,
+            **{
+                _entity_id_kwarg(entity_type): entity_id,
+                "trigger_id": trigger_id,
+                "body": trigger_config,
+            },
+        )
+
+    async def delete_trigger(
+        self, entity_id: str, trigger_id: str, entity_type: str = "components"
+    ) -> dict[str, Any]:
+        fn = _entity_func("triggers", "delete", entity_type)
+        # delete_trigger returns 204 No Content on success.
+        # The generated client returns None for 204, which MedkitClient.call()
+        # treats as an error. Call the function directly and treat None as success.
+        client = await self._ensure_client()
+        try:
+            result = await fn(
+                client=client.http,
+                **{_entity_id_kwarg(entity_type): entity_id, "trigger_id": trigger_id},
             )
             if result is None:
                 return {}
