@@ -4,6 +4,7 @@ This module defines the MCP server with all tools and resources,
 intended to be reused by both stdio and HTTP transport entrypoints.
 """
 
+import base64
 import json
 import logging
 from pathlib import Path
@@ -683,6 +684,7 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_execute_script": "sovd_execute_script",
     "sovd_get_script_execution": "sovd_get_script_execution",
     "sovd_control_script_execution": "sovd_control_script_execution",
+    "sovd_delete_script": "sovd_delete_script",
     # Locking
     "sovd_acquire_lock": "sovd_acquire_lock",
     "sovd_list_locks": "sovd_list_locks",
@@ -830,7 +832,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -853,7 +856,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -876,7 +880,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -904,7 +909,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -927,7 +933,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1122,7 +1129,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1145,7 +1153,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1172,7 +1181,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1192,7 +1202,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1215,7 +1226,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1242,7 +1254,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1265,7 +1278,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1292,7 +1306,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1323,7 +1338,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1350,7 +1366,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1370,7 +1387,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1393,7 +1411,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1419,7 +1438,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1442,7 +1462,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1461,7 +1482,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1481,7 +1503,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1500,7 +1523,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1520,7 +1544,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "apps",
                         },
                     },
@@ -1543,7 +1568,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "apps",
                         },
                     },
@@ -1599,7 +1625,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "apps",
                         },
                         "output_dir": {
@@ -1635,7 +1662,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "apps",
                         },
                     },
@@ -1662,7 +1690,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "apps",
                         },
                     },
@@ -1682,7 +1711,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1701,7 +1731,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1724,7 +1755,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1744,7 +1776,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1767,7 +1800,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1790,7 +1824,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1817,7 +1852,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1840,7 +1876,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', 'areas', or 'functions'",
+                            "enum": ["components", "apps", "areas", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1860,7 +1897,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1883,7 +1921,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1906,7 +1945,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1933,7 +1973,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1960,7 +2001,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -1991,11 +2033,36 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
                     "required": ["entity_id", "script_id", "execution_id", "action"],
+                },
+            ),
+            Tool(
+                name="sovd_delete_script",
+                description="Delete a script from an entity.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "script_id": {
+                            "type": "string",
+                            "description": "The script identifier",
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
+                            "default": "components",
+                        },
+                    },
+                    "required": ["entity_id", "script_id"],
                 },
             ),
             # ==================== Locking ====================
@@ -2015,7 +2082,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -2034,7 +2102,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -2057,7 +2126,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -2084,7 +2154,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -2107,7 +2178,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components' or 'apps'",
+                            "enum": ["components", "apps"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -2131,7 +2203,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', or 'functions'",
+                            "enum": ["components", "apps", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -2150,7 +2223,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', or 'functions'",
+                            "enum": ["components", "apps", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -2173,7 +2247,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', or 'functions'",
+                            "enum": ["components", "apps", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -2200,7 +2275,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', or 'functions'",
+                            "enum": ["components", "apps", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -2223,7 +2299,8 @@ def register_tools(
                         },
                         "entity_type": {
                             "type": "string",
-                            "description": "Entity type: 'components', 'apps', or 'functions'",
+                            "enum": ["components", "apps", "functions"],
+                            "description": "Entity type",
                             "default": "components",
                         },
                     },
@@ -2308,7 +2385,7 @@ def register_tools(
             ),
             Tool(
                 name="sovd_execute_update",
-                description="Execute a prepared update.",
+                description="Execute a prepared software update. WARNING: This triggers actual software installation on the target system. Ensure the update has been prepared successfully first.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -2326,7 +2403,7 @@ def register_tools(
             ),
             Tool(
                 name="sovd_automate_update",
-                description="Run full automated update flow (prepare + execute).",
+                description="Run automated update workflow (prepare + execute). WARNING: This triggers actual software installation on the target system. Use with caution.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -2701,9 +2778,10 @@ def register_tools(
 
             elif normalized_name == "sovd_bulkdata_upload":
                 args = BulkDataUploadArgs(**arguments)
-                import base64
-
-                file_bytes = base64.b64decode(args.file_content)
+                try:
+                    file_bytes = base64.b64decode(args.file_content)
+                except Exception:
+                    return format_error("Invalid base64 encoding in file_content")
                 result = await client.upload_bulk_data(
                     args.entity_id, args.category, file_bytes, args.filename, args.entity_type
                 )
@@ -2809,6 +2887,13 @@ def register_tools(
                     args.execution_id,
                     args.action,
                     args.entity_type,
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "sovd_delete_script":
+                args = GetScriptArgs(**arguments)
+                result = await client.delete_script(
+                    args.entity_id, args.script_id, args.entity_type
                 )
                 return format_json_response(result)
 
