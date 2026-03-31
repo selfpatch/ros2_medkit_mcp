@@ -2189,7 +2189,7 @@ def register_tools(
             # ==================== Cyclic Subscriptions ====================
             Tool(
                 name="sovd_create_cyclic_sub",
-                description="Create a cyclic data subscription for an entity. Subscribes to periodic data updates.",
+                description="Create a cyclic data subscription for an entity. Subscribes to periodic data updates. Required fields in sub_config: 'resource' (data URI to observe), 'interval' ('fast', 'normal', or 'slow'), 'duration' (seconds). Optional: 'protocol' (default 'sse').",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -2199,7 +2199,20 @@ def register_tools(
                         },
                         "sub_config": {
                             "type": "object",
-                            "description": "Subscription configuration (e.g., {'resource': '/data/temperature', 'period': 1000})",
+                            "description": "Subscription config. Required: resource (string), interval ('fast'|'normal'|'slow'), duration (integer seconds). Example: {'resource': '/data/temperature', 'interval': 'fast', 'duration': 60}",
+                            "properties": {
+                                "resource": {
+                                    "type": "string",
+                                    "description": "Data URI to subscribe to",
+                                },
+                                "interval": {"type": "string", "enum": ["fast", "normal", "slow"]},
+                                "duration": {
+                                    "type": "integer",
+                                    "description": "Subscription duration in seconds",
+                                    "minimum": 1,
+                                },
+                            },
+                            "required": ["resource", "interval", "duration"],
                         },
                         "entity_type": {
                             "type": "string",
