@@ -6,6 +6,7 @@ import respx
 
 from ros2_medkit_mcp.client import SovdClient
 from ros2_medkit_mcp.config import Settings
+from ros2_medkit_mcp.mcp_app import format_json_response
 
 
 @pytest.fixture
@@ -612,4 +613,145 @@ class TestBulkDataUploadDeleteTools:
             "motor", "rosbags", b"binary-data", "data.bin", "components"
         )
         assert result["id"] == "uploaded-2"
+        await client.close()
+
+
+class TestDispatchSmoke:
+    """Smoke tests verifying client -> format_json_response dispatch for each tool group."""
+
+    @respx.mock
+    async def test_logs_dispatch_smoke(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/logs").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "log-001",
+                            "severity": "info",
+                            "message": "OK",
+                            "timestamp": "2026-01-01T00:00:00Z",
+                        }
+                    ]
+                },
+            )
+        )
+        result = await client.list_logs("motor")
+        formatted = format_json_response(result)
+        assert "log-001" in formatted[0].text
+        assert "info" in formatted[0].text
+        await client.close()
+
+    @respx.mock
+    async def test_triggers_dispatch_smoke(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/triggers").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "t1",
+                            "event_source": "/events",
+                            "observed_resource": "/data/temperature",
+                            "protocol": "sse",
+                            "status": "active",
+                            "trigger_condition": {"condition_type": "on_change"},
+                        }
+                    ]
+                },
+            )
+        )
+        result = await client.list_triggers("motor")
+        formatted = format_json_response(result)
+        assert "t1" in formatted[0].text
+        assert "on_change" in formatted[0].text
+        await client.close()
+
+    @respx.mock
+    async def test_scripts_dispatch_smoke(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/scripts").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [{"id": "s1", "name": "diagnostics.py"}]},
+            )
+        )
+        result = await client.list_scripts("motor")
+        formatted = format_json_response(result)
+        assert "s1" in formatted[0].text
+        assert "diagnostics.py" in formatted[0].text
+        await client.close()
+
+    @respx.mock
+    async def test_locking_dispatch_smoke(self, client: SovdClient) -> None:
+        respx.post("http://test-sovd:8080/api/v1/components/motor/locks").mock(
+            return_value=httpx.Response(
+                201,
+                json={"id": "lock-1", "lock_expiration": "2026-01-01T01:00:00Z", "owned": True},
+            )
+        )
+        result = await client.acquire_lock("motor", {"lock_expiration": 60})
+        formatted = format_json_response(result)
+        assert "lock-1" in formatted[0].text
+        assert "owned" in formatted[0].text
+        await client.close()
+
+    @respx.mock
+    async def test_subscriptions_dispatch_smoke(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/cyclic-subscriptions").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "sub-1",
+                            "event_source": "/events",
+                            "interval": "fast",
+                            "observed_resource": "/data/temperature",
+                            "protocol": "sse",
+                        }
+                    ]
+                },
+            )
+        )
+        result = await client.list_cyclic_subscriptions("motor")
+        formatted = format_json_response(result)
+        assert "sub-1" in formatted[0].text
+        assert "fast" in formatted[0].text
+        await client.close()
+
+    @respx.mock
+    async def test_updates_dispatch_smoke(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/updates").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "upd-1",
+                            "name": "firmware-v2",
+                            "version": "2.0.0",
+                            "status": "pending",
+                        }
+                    ]
+                },
+            )
+        )
+        result = await client.list_updates()
+        formatted = format_json_response(result)
+        assert "upd-1" in formatted[0].text
+        assert "firmware-v2" in formatted[0].text
+        await client.close()
+
+    @respx.mock
+    async def test_data_discovery_dispatch_smoke(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/motor/data-categories").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": ["topics", "parameters"]},
+            )
+        )
+        result = await client.list_data_categories("motor")
+        formatted = format_json_response(result)
+        assert "topics" in formatted[0].text
+        assert "parameters" in formatted[0].text
         await client.close()

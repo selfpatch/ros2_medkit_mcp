@@ -881,8 +881,8 @@ class CreateTriggerArgs(BaseModel):
     trigger_config: dict[str, Any] = Field(
         ...,
         description=(
-            "Trigger configuration"
-            " (e.g., {'resource': '/data/temperature', 'interval': 'fast', 'duration': 60})"
+            "Trigger configuration. Required: resource (string), trigger_condition (object with condition_type)."
+            " Example: {'resource': '/data/temperature', 'trigger_condition': {'condition_type': 'on_change'}}"
         ),
     )
     entity_type: str = Field(
@@ -977,7 +977,7 @@ class ControlScriptExecutionArgs(BaseModel):
     execution_id: str = Field(..., description="The execution identifier")
     action: dict[str, Any] = Field(
         ...,
-        description="Control action (e.g., {'command': 'stop'} or {'command': 'pause'})",
+        description="Control action (e.g., {'action': 'stop'} or {'action': 'pause'})",
     )
     entity_type: str = Field(
         default="components",
@@ -994,11 +994,15 @@ class AcquireLockArgs(BaseModel):
     entity_id: str = Field(..., description="The entity identifier")
     lock_config: dict[str, Any] = Field(
         ...,
-        description="Lock configuration (e.g., {'duration': 60, 'reason': 'maintenance'})",
+        description="Lock configuration. Required: lock_expiration (integer, seconds). Example: {'lock_expiration': 60}",
     )
     entity_type: str = Field(
         default="components",
         description="Entity type: 'components' or 'apps'",
+    )
+    client_id: str = Field(
+        default="ros2_medkit_mcp",
+        description="Client identifier for lock ownership tracking",
     )
 
 
@@ -1021,6 +1025,10 @@ class GetLockArgs(BaseModel):
         default="components",
         description="Entity type: 'components' or 'apps'",
     )
+    client_id: str = Field(
+        default="ros2_medkit_mcp",
+        description="Client identifier for lock ownership tracking",
+    )
 
 
 class ExtendLockArgs(BaseModel):
@@ -1030,11 +1038,15 @@ class ExtendLockArgs(BaseModel):
     lock_id: str = Field(..., description="The lock identifier")
     lock_config: dict[str, Any] = Field(
         ...,
-        description="Lock extension configuration (e.g., {'duration': 120})",
+        description="Lock extension configuration. Required: lock_expiration (integer, seconds). Example: {'lock_expiration': 120}",
     )
     entity_type: str = Field(
         default="components",
         description="Entity type: 'components' or 'apps'",
+    )
+    client_id: str = Field(
+        default="ros2_medkit_mcp",
+        description="Client identifier for lock ownership tracking",
     )
 
 
@@ -1048,8 +1060,8 @@ class CreateCyclicSubArgs(BaseModel):
     sub_config: dict[str, Any] = Field(
         ...,
         description=(
-            "Subscription configuration"
-            " (e.g., {'resource': '/data/temperature', 'period': 1000})"
+            "Subscription configuration. Required: resource (string), interval ('fast'|'normal'|'slow'), duration (int seconds)."
+            " Example: {'resource': '/data/temperature', 'interval': 'fast', 'duration': 60}"
         ),
     )
     entity_type: str = Field(
