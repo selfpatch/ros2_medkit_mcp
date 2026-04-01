@@ -2190,6 +2190,11 @@ def register_tools(
                             "description": "Entity type",
                             "default": "components",
                         },
+                        "client_id": {
+                            "type": "string",
+                            "description": "Client identifier for lock ownership tracking",
+                            "default": "ros2_medkit_mcp",
+                        },
                     },
                     "required": ["entity_id", "lock_config"],
                 },
@@ -2254,13 +2259,26 @@ def register_tools(
                         },
                         "lock_config": {
                             "type": "object",
-                            "description": "Lock extension configuration (e.g., {'duration': 120})",
+                            "description": "Lock extension config. Required: lock_expiration (integer, seconds). Example: {'lock_expiration': 120}",
+                            "properties": {
+                                "lock_expiration": {
+                                    "type": "integer",
+                                    "description": "New lock duration in seconds",
+                                    "minimum": 1,
+                                },
+                            },
+                            "required": ["lock_expiration"],
                         },
                         "entity_type": {
                             "type": "string",
                             "enum": ["components", "apps"],
                             "description": "Entity type",
                             "default": "components",
+                        },
+                        "client_id": {
+                            "type": "string",
+                            "description": "Client identifier for lock ownership tracking",
+                            "default": "ros2_medkit_mcp",
                         },
                     },
                     "required": ["entity_id", "lock_id", "lock_config"],
@@ -2285,6 +2303,11 @@ def register_tools(
                             "enum": ["components", "apps"],
                             "description": "Entity type",
                             "default": "components",
+                        },
+                        "client_id": {
+                            "type": "string",
+                            "description": "Client identifier for lock ownership tracking",
+                            "default": "ros2_medkit_mcp",
                         },
                     },
                     "required": ["entity_id", "lock_id"],
@@ -3019,7 +3042,7 @@ def register_tools(
             elif normalized_name == "ros2_medkit_acquire_lock":
                 args = AcquireLockArgs(**arguments)
                 result = await client.acquire_lock(
-                    args.entity_id, args.lock_config, args.entity_type
+                    args.entity_id, args.lock_config, args.entity_type, args.client_id
                 )
                 return format_json_response(result)
 
@@ -3036,13 +3059,19 @@ def register_tools(
             elif normalized_name == "ros2_medkit_extend_lock":
                 args = ExtendLockArgs(**arguments)
                 result = await client.extend_lock(
-                    args.entity_id, args.lock_id, args.lock_config, args.entity_type
+                    args.entity_id,
+                    args.lock_id,
+                    args.lock_config,
+                    args.entity_type,
+                    args.client_id,
                 )
                 return format_json_response(result)
 
             elif normalized_name == "ros2_medkit_release_lock":
                 args = GetLockArgs(**arguments)
-                result = await client.release_lock(args.entity_id, args.lock_id, args.entity_type)
+                result = await client.release_lock(
+                    args.entity_id, args.lock_id, args.entity_type, args.client_id
+                )
                 return format_json_response(result)
 
             # ==================== Cyclic Subscriptions ====================
