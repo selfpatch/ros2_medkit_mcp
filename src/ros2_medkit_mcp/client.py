@@ -875,7 +875,7 @@ class SovdClient:
 
     async def list_data_categories(
         self, entity_id: str, entity_type: str = "components"
-    ) -> list[dict[str, Any]]:
+    ) -> list[Any]:
         fn = _entity_func("data_categories", "list", entity_type)
         return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
 
