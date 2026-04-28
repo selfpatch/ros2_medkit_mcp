@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/selfpatch-ros2-medkit-mcp-badge.png)](https://mseep.ai/app/selfpatch-ros2-medkit-mcp)
+
 # ros2_medkit_mcp
 
 [![CI](https://github.com/selfpatch/ros2_medkit_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/selfpatch/ros2_medkit_mcp/actions/workflows/ci.yml)
