@@ -39,6 +39,35 @@ class FaultsListArgs(BaseModel):
         default="components",
         description="Entity type: 'components', 'apps', 'areas', or 'functions'",
     )
+    status: str | None = Field(
+        default=None,
+        description="Filter by fault status: pending, confirmed, cleared, healed, or all",
+    )
+    include_muted: bool = Field(
+        default=False,
+        description="Include muted faults in the response",
+    )
+    include_clusters: bool = Field(
+        default=False,
+        description="Include fault clusters in the response",
+    )
+
+
+class AllFaultsListArgs(BaseModel):
+    """Arguments for listing all faults globally."""
+
+    status: str | None = Field(
+        default=None,
+        description="Filter by fault status: pending, confirmed, cleared, healed, or all",
+    )
+    include_muted: bool = Field(
+        default=False,
+        description="Include muted faults in the response",
+    )
+    include_clusters: bool = Field(
+        default=False,
+        description="Include fault clusters in the response",
+    )
 
 
 class FaultGetArgs(BaseModel):
@@ -824,6 +853,14 @@ class ListLogsArgs(BaseModel):
         default="components",
         description="Entity type: 'components', 'apps', 'areas', or 'functions'",
     )
+    severity: str | None = Field(
+        default=None,
+        description="Filter by minimum severity: debug, info, warning, error, or fatal",
+    )
+    context: str | None = Field(
+        default=None,
+        description="Filter by logger context substring (max 256 chars)",
+    )
 
 
 class GetLogConfigurationArgs(BaseModel):
@@ -1109,7 +1146,14 @@ class UpdateCyclicSubArgs(BaseModel):
 class ListUpdatesArgs(BaseModel):
     """Arguments for sovd_list_updates tool."""
 
-    pass
+    origin: str | None = Field(
+        default=None,
+        description="Filter by update origin identifier",
+    )
+    target_version: str | None = Field(
+        default=None,
+        description="Filter by target version",
+    )
 
 
 class RegisterUpdateArgs(BaseModel):
