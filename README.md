@@ -25,7 +25,7 @@ This server does **not** implement SOVD itself. It provides MCP tools that call 
 ### Prerequisites
 
 - Python 3.11+
-- Poetry
+- [Poetry](https://python-poetry.org/) or [uv](https://docs.astral.sh/uv/)
 - A running ros2_medkit gateway (default: `http://localhost:8080`)
 
 ### Installation
@@ -35,8 +35,25 @@ This server does **not** implement SOVD itself. It provides MCP tools that call 
 git clone https://github.com/selfpatch/ros2_medkit_mcp.git
 cd ros2_medkit_mcp
 
-# Install dependencies
+# Install dependencies with Poetry
 poetry install
+```
+
+Or with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv venv
+uv pip install -e .            # add '.[dev]' for the test and lint tools
+```
+
+> The project uses the Poetry build backend, so install it with `uv pip install`
+> (not `uv sync`, which only reads PEP 621 `[project]` dependencies). The entry
+> points then live in `.venv/bin/`.
+
+Don't want a checkout at all? Run it straight from the repository with `uvx`:
+
+```bash
+uvx --from git+https://github.com/selfpatch/ros2_medkit_mcp ros2-medkit-mcp-stdio
 ```
 
 ### Configuration
@@ -55,6 +72,8 @@ The server is configured via environment variables:
 
 ```bash
 poetry run ros2-medkit-mcp-stdio
+# uv:  uv run --no-sync ros2-medkit-mcp-stdio   (or: .venv/bin/ros2-medkit-mcp-stdio)
+# uvx: uvx --from git+https://github.com/selfpatch/ros2_medkit_mcp ros2-medkit-mcp-stdio
 ```
 
 For Claude Desktop, add to your `claude_desktop_config.json`:
@@ -74,10 +93,32 @@ For Claude Desktop, add to your `claude_desktop_config.json`:
 }
 ```
 
+Or with `uvx`, which needs no local checkout (drop the `cwd`):
+
+```json
+{
+  "mcpServers": {
+    "ros2_medkit": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/selfpatch/ros2_medkit_mcp",
+        "ros2-medkit-mcp-stdio"
+      ],
+      "env": {
+        "ROS2_MEDKIT_BASE_URL": "http://localhost:8080/api/v1"
+      }
+    }
+  }
+}
+```
+
 #### Streamable HTTP Transport
 
 ```bash
 poetry run ros2-medkit-mcp-http --host 0.0.0.0 --port 8765
+# uv:  uv run --no-sync ros2-medkit-mcp-http --host 0.0.0.0 --port 8765
+# uvx: uvx --from git+https://github.com/selfpatch/ros2_medkit_mcp ros2-medkit-mcp-http --host 0.0.0.0 --port 8765
 ```
 
 The server will be available at `http://0.0.0.0:8765/mcp`.
