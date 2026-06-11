@@ -915,16 +915,6 @@ def register_tools(
                             "enum": ["pending", "confirmed", "cleared", "healed", "all"],
                             "description": "Filter by fault status",
                         },
-                        "include_muted": {
-                            "type": "boolean",
-                            "description": "Include muted faults in the response",
-                            "default": False,
-                        },
-                        "include_clusters": {
-                            "type": "boolean",
-                            "description": "Include fault clusters in the response",
-                            "default": False,
-                        },
                     },
                     "required": ["entity_id"],
                 },
@@ -2565,12 +2555,8 @@ def register_tools(
                             "type": "string",
                             "description": "The update identifier",
                         },
-                        "config": {
-                            "type": "object",
-                            "description": "Preparation configuration (e.g., {'verify_checksum': true})",
-                        },
                     },
-                    "required": ["update_id", "config"],
+                    "required": ["update_id"],
                 },
             ),
             Tool(
@@ -2583,12 +2569,8 @@ def register_tools(
                             "type": "string",
                             "description": "The update identifier",
                         },
-                        "config": {
-                            "type": "object",
-                            "description": "Execution configuration (e.g., {'reboot_after': true})",
-                        },
                     },
-                    "required": ["update_id", "config"],
+                    "required": ["update_id"],
                 },
             ),
             Tool(
@@ -2601,15 +2583,8 @@ def register_tools(
                             "type": "string",
                             "description": "The update identifier",
                         },
-                        "config": {
-                            "type": "object",
-                            "description": (
-                                "Automation configuration"
-                                " (e.g., {'verify_checksum': true, 'reboot_after': true})"
-                            ),
-                        },
                     },
-                    "required": ["update_id", "config"],
+                    "required": ["update_id"],
                 },
             ),
             Tool(
@@ -2709,11 +2684,7 @@ def register_tools(
             elif normalized_name == "ros2_medkit_faults_list":
                 args = FaultsListArgs(**arguments)
                 faults = await client.list_faults(
-                    args.entity_id,
-                    args.entity_type,
-                    status=args.status,
-                    include_muted=args.include_muted,
-                    include_clusters=args.include_clusters,
+                    args.entity_id, args.entity_type, status=args.status
                 )
                 return format_fault_list(faults)
 
@@ -3198,17 +3169,17 @@ def register_tools(
 
             elif normalized_name == "ros2_medkit_prepare_update":
                 args = PrepareUpdateArgs(**arguments)
-                result = await client.prepare_update(args.update_id, args.config)
+                result = await client.prepare_update(args.update_id)
                 return format_json_response(result)
 
             elif normalized_name == "ros2_medkit_execute_update":
                 args = ExecuteUpdateArgs(**arguments)
-                result = await client.execute_update(args.update_id, args.config)
+                result = await client.execute_update(args.update_id)
                 return format_json_response(result)
 
             elif normalized_name == "ros2_medkit_automate_update":
                 args = AutomateUpdateArgs(**arguments)
-                result = await client.automate_update(args.update_id, args.config)
+                result = await client.automate_update(args.update_id)
                 return format_json_response(result)
 
             elif normalized_name == "ros2_medkit_delete_update":

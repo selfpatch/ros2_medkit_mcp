@@ -43,14 +43,6 @@ class FaultsListArgs(BaseModel):
         default=None,
         description="Filter by fault status: pending, confirmed, cleared, healed, or all",
     )
-    include_muted: bool = Field(
-        default=False,
-        description="Include muted faults in the response",
-    )
-    include_clusters: bool = Field(
-        default=False,
-        description="Include fault clusters in the response",
-    )
 
 
 class AllFaultsListArgs(BaseModel):
@@ -1184,30 +1176,18 @@ class PrepareUpdateArgs(BaseModel):
     """Arguments for sovd_prepare_update tool."""
 
     update_id: str = Field(..., description="The update identifier")
-    config: dict[str, Any] = Field(
-        ...,
-        description="Preparation configuration (e.g., {'verify_checksum': true})",
-    )
 
 
 class ExecuteUpdateArgs(BaseModel):
     """Arguments for sovd_execute_update tool."""
 
     update_id: str = Field(..., description="The update identifier")
-    config: dict[str, Any] = Field(
-        ...,
-        description="Execution configuration (e.g., {'reboot_after': true})",
-    )
 
 
 class AutomateUpdateArgs(BaseModel):
     """Arguments for sovd_automate_update tool."""
 
     update_id: str = Field(..., description="The update identifier")
-    config: dict[str, Any] = Field(
-        ...,
-        description="Automation configuration (e.g., {'verify_checksum': true, 'reboot_after': true})",
-    )
 
 
 class ToolResult(BaseModel):

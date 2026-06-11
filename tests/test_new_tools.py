@@ -491,7 +491,7 @@ class TestUpdatesTools:
         respx.put("http://test-sovd:8080/api/v1/updates/upd-1/prepare").mock(
             return_value=httpx.Response(202)
         )
-        result = await client.prepare_update("upd-1", {"verify_checksum": True})
+        result = await client.prepare_update("upd-1")
         assert result == {}
         await client.close()
 
@@ -501,7 +501,7 @@ class TestUpdatesTools:
         respx.put("http://test-sovd:8080/api/v1/updates/upd-1/execute").mock(
             return_value=httpx.Response(202)
         )
-        result = await client.execute_update("upd-1", {"reboot_after": True})
+        result = await client.execute_update("upd-1")
         assert result == {}
         await client.close()
 
@@ -511,9 +511,7 @@ class TestUpdatesTools:
         respx.put("http://test-sovd:8080/api/v1/updates/upd-1/automated").mock(
             return_value=httpx.Response(202)
         )
-        result = await client.automate_update(
-            "upd-1", {"verify_checksum": True, "reboot_after": True}
-        )
+        result = await client.automate_update("upd-1")
         assert result == {}
         await client.close()
 

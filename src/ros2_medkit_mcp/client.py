@@ -9,8 +9,10 @@ not the gateway's camelCase JSON.
 """
 
 import asyncio
+import json
 import logging
 import re
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from typing import Any
@@ -98,6 +100,36 @@ def _fault_query_params(
     if include_clusters:
         params["include_clusters"] = "true"
     return params
+
+
+def _error_from_content(status_code: int, content: bytes) -> str:
+    """Build an error message from an HTTP status and a raw response body.
+
+    Prefers the SOVD error envelope (``[error_code] message``) so callers surface
+    the same diagnostics regardless of whether the response came from raw httpx
+    or the generated client. Falls back to the status plus a truncated body.
+    """
+    try:
+        body = json.loads(content)
+    except (ValueError, TypeError):
+        text = content.decode("utf-8", "replace").strip() if content else ""
+        return (
+            f"Gateway returned HTTP {status_code}: {text[:200]}"
+            if text
+            else f"Gateway returned HTTP {status_code}"
+        )
+    if isinstance(body, dict) and body.get("error_code"):
+        return f"[{body['error_code']}] {body.get('message', '')}".strip()
+    return f"Gateway returned HTTP {status_code}"
+
+
+def _gateway_error_message(response: httpx.Response) -> str:
+    """Build an error message from a gateway httpx error response.
+
+    Surfaces the SOVD error envelope (``[error_code] message``) so raw httpx
+    calls report the same diagnostics as the generated-client path.
+    """
+    return _error_from_content(response.status_code, response.content)
 
 
 def _extract_filename(content_disposition: str) -> str | None:
@@ -523,26 +555,31 @@ class SovdClient:
             raise SovdClientError(message=f"Failed to parse response: {e}") from e
 
     async def _call_void(self, api_func: Any, **kwargs: Any) -> dict[str, Any]:
-        """Call a generated API function that may return 204/202 (None).
+        """Call a generated API function whose success may be a body-less 204/202.
 
-        Unlike _call(), this handles endpoints that return no body on success.
-        The generated client returns None for 204/202, which MedkitClient.call()
-        treats as an error. This method calls the function directly, treating
-        None as success and checking for GenericError responses.
+        Unlike _call(), this tolerates endpoints that return no body on success.
+        Success is derived from the HTTP status, NOT from a None parsed body: the
+        generated parsers also return None for any *undocumented* status (401,
+        403, 429, 503, ...) when raise_on_unexpected_status is False, so keying
+        success off `parsed is None` would report success on those errors - a
+        silent false-success on destructive operations. Uses the ``_detailed``
+        variant so the real status code is available; only 2xx is success.
         """
         if "body" in kwargs and isinstance(kwargs["body"], dict):
             kwargs["body"] = _wrap_body_dict(api_func, kwargs["body"])
         client = await self._ensure_client()
+        detailed = sys.modules[api_func.__module__].asyncio_detailed
         try:
-            result = await api_func(client=client.http, **kwargs)
-            if result is None:
+            response = await detailed(client=client.http, **kwargs)
+            status = int(response.status_code)
+            if status >= 400:
+                raise SovdClientError(
+                    message=_error_from_content(status, response.content),
+                    status_code=status,
+                )
+            if response.parsed is None:
                 return {}
-            # Check for GenericError (gateway returned 4xx/5xx)
-            if hasattr(result, "error_code") and hasattr(result, "message"):
-                error_code = getattr(result, "error_code", "unknown")
-                message = getattr(result, "message", "Unknown error")
-                raise SovdClientError(message=f"[{error_code}] {message}")
-            return _to_dict(result)
+            return _to_dict(response.parsed)
         except httpx.TimeoutException as e:
             raise SovdClientError(message=f"Request timed out: {e}") from e
         except httpx.RequestError as e:
@@ -558,7 +595,7 @@ class SovdClient:
             response = await hc.request(method, path)
             if not response.is_success:
                 raise SovdClientError(
-                    message=f"Gateway returned HTTP {response.status_code}",
+                    message=_gateway_error_message(response),
                     status_code=response.status_code,
                 )
             try:
@@ -591,7 +628,7 @@ class SovdClient:
             response = await hc.post(path, files=files)
             if not response.is_success:
                 raise SovdClientError(
-                    message=f"Gateway returned HTTP {response.status_code}",
+                    message=_gateway_error_message(response),
                     status_code=response.status_code,
                 )
             if response.status_code == 204 or not response.content:
@@ -619,7 +656,7 @@ class SovdClient:
             response = await hc.get(path, params=params)
             if not response.is_success:
                 raise SovdClientError(
-                    message=f"Gateway returned HTTP {response.status_code}",
+                    message=_gateway_error_message(response),
                     status_code=response.status_code,
                 )
             return _extract_items(response.json())
@@ -731,13 +768,13 @@ class SovdClient:
         entity_id: str,
         entity_type: str = "components",
         status: str | None = None,
-        include_muted: bool = False,
-        include_clusters: bool = False,
     ) -> list[dict[str, Any]]:
-        params = _fault_query_params(status, include_muted, include_clusters)
-        if params:
+        # Only `status` is honored on the per-entity fault route; the gateway
+        # intentionally ignores include_muted/include_clusters there (they are
+        # global-only - see list_all_faults).
+        if status:
             path = f"/{quote(entity_type, safe='')}/{quote(entity_id, safe='')}/faults"
-            return await self._raw_get_items(path, params)
+            return await self._raw_get_items(path, {"status": status})
         fn = _entity_func("faults", "list", entity_type)
         return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
 
@@ -753,7 +790,7 @@ class SovdClient:
         self, entity_id: str, fault_id: str, entity_type: str = "components"
     ) -> dict[str, Any]:
         fn = _entity_func("faults", "clear", entity_type)
-        return await self._call(
+        return await self._call_void(
             fn, **{_entity_id_kwarg(entity_type): entity_id, "fault_code": fault_id}
         )
 
@@ -761,7 +798,7 @@ class SovdClient:
         self, entity_id: str, entity_type: str = "components"
     ) -> dict[str, Any]:
         fn = _entity_func("faults", "clear_all", entity_type)
-        return await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id})
+        return await self._call_void(fn, **{_entity_id_kwarg(entity_type): entity_id})
 
     async def list_all_faults(
         self,
@@ -903,7 +940,7 @@ class SovdClient:
         entity_type: str = "components",
     ) -> dict[str, Any]:
         fn = _entity_func("operations", "cancel_execution", entity_type)
-        return await self._call(
+        return await self._call_void(
             fn,
             **{
                 _entity_id_kwarg(entity_type): entity_id,
@@ -946,7 +983,7 @@ class SovdClient:
         self, entity_id: str, param_name: str, entity_type: str = "components"
     ) -> dict[str, Any]:
         fn = _entity_func("configurations", "delete", entity_type)
-        return await self._call(
+        return await self._call_void(
             fn,
             **{_entity_id_kwarg(entity_type): entity_id, "config_id": param_name},
         )
@@ -955,7 +992,7 @@ class SovdClient:
         self, entity_id: str, entity_type: str = "components"
     ) -> dict[str, Any]:
         fn = _entity_func("configurations", "delete_all", entity_type)
-        return await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id})
+        return await self._call_void(fn, **{_entity_id_kwarg(entity_type): entity_id})
 
     # ==================== Data Discovery ====================
 
@@ -1380,21 +1417,17 @@ class SovdClient:
     async def get_update_status(self, update_id: str) -> dict[str, Any]:
         return await self._call(updates.get_update_status.asyncio, update_id=update_id)
 
-    async def prepare_update(self, update_id: str, config: dict[str, Any]) -> dict[str, Any]:
-        # 0.5.0: prepare is a body-less PUT returning 202 Accepted. The endpoint
-        # no longer accepts a request body; config is retained for MCP tool
-        # compatibility but not transmitted.
-        del config
+    async def prepare_update(self, update_id: str) -> dict[str, Any]:
+        # 0.5.0: prepare is a body-less PUT returning 202 Accepted; the endpoint
+        # takes no request body.
         return await self._call_update_action(updates.prepare_update.asyncio, update_id=update_id)
 
-    async def execute_update(self, update_id: str, config: dict[str, Any]) -> dict[str, Any]:
+    async def execute_update(self, update_id: str) -> dict[str, Any]:
         # 0.5.0: execute is a body-less PUT returning 202 Accepted (see prepare_update).
-        del config
         return await self._call_update_action(updates.execute_update.asyncio, update_id=update_id)
 
-    async def automate_update(self, update_id: str, config: dict[str, Any]) -> dict[str, Any]:
+    async def automate_update(self, update_id: str) -> dict[str, Any]:
         # 0.5.0: automate is a body-less PUT returning 202 Accepted (see prepare_update).
-        del config
         return await self._call_update_action(updates.automate_update.asyncio, update_id=update_id)
 
     async def _call_update_action(self, api_func: Any, **kwargs: Any) -> dict[str, Any]:
