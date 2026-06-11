@@ -98,6 +98,8 @@ class TestTriggersTools:
         "protocol": "sse",
         "status": "active",
         "trigger_condition": {"condition_type": "on_change"},
+        "multishot": True,
+        "persistent": False,
     }
 
     @respx.mock
@@ -425,6 +427,7 @@ class TestUpdatesTools:
     UPDATE_STATUS_RESPONSE = {
         "status": "inProgress",
         "progress": 50,
+        "x-medkit": {"phase": "executing"},
     }
 
     @respx.mock
@@ -656,6 +659,8 @@ class TestDispatchSmoke:
                             "protocol": "sse",
                             "status": "active",
                             "trigger_condition": {"condition_type": "on_change"},
+                            "multishot": True,
+                            "persistent": False,
                         }
                     ]
                 },

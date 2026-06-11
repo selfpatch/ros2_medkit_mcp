@@ -557,6 +557,41 @@ class SovdClient:
         except httpx.RequestError as e:
             raise SovdClientError(message=f"Request failed: {e}") from e
 
+    async def _raw_upload(
+        self,
+        path: str,
+        filename: str,
+        content: bytes,
+        content_type: str = "application/octet-stream",
+    ) -> dict[str, Any]:
+        """POST a multipart/form-data upload with a ``file`` field.
+
+        The generated upload models serialize each property as a text/plain part
+        via ``str(value)``, which corrupts binary payloads. The gateway expects a
+        ``file`` part (see bulk-data/scripts handlers), so issue the multipart
+        request directly. Path segments must be pre-encoded by the caller.
+        """
+        try:
+            hc = await self._httpx_client()
+            files = {"file": (filename, content, content_type)}
+            response = await hc.post(path, files=files)
+            if not response.is_success:
+                raise SovdClientError(
+                    message=f"Gateway returned HTTP {response.status_code}",
+                    status_code=response.status_code,
+                )
+            if response.status_code == 204 or not response.content:
+                return {}
+            try:
+                return response.json()
+            except ValueError as e:
+                raise SovdClientError(
+                    message="Failed to decode JSON response from gateway",
+                    status_code=response.status_code,
+                ) from e
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+
     # ==================== Server ====================
 
     async def get_version(self) -> dict[str, Any]:
@@ -612,7 +647,7 @@ class SovdClient:
         entities = await self.list_entities()
         for entity in entities:
             if entity.get("id") == entity_id:
-                if entity.get("type") == "Component":
+                if entity.get("type") == "component":
                     try:
                         component_data = await self.get_component_data(entity_id)
                         return {**entity, "data": component_data}
@@ -973,25 +1008,11 @@ class SovdClient:
         filename: str,
         entity_type: str = "apps",
     ) -> dict[str, Any]:
-        fn = _entity_func("bulk_data", "upload", entity_type)
-        # upload expects a File object (binary upload), not a dict body.
-        import io
-
-        from ros2_medkit_client._generated.types import File
-
-        file_obj = File(
-            payload=io.BytesIO(file_content),
-            file_name=filename,
-            mime_type="application/octet-stream",
+        path = (
+            f"/{quote(entity_type, safe='')}/{quote(entity_id, safe='')}"
+            f"/bulk-data/{quote(category, safe='')}"
         )
-        return await self._call_void(
-            fn,
-            **{
-                _entity_id_kwarg(entity_type): entity_id,
-                "category_id": category,
-                "body": file_obj,
-            },
-        )
+        return await self._raw_upload(path, filename, file_content)
 
     # ==================== Logs ====================
 
@@ -1083,20 +1104,9 @@ class SovdClient:
     async def upload_script(
         self, entity_id: str, script_content: str, entity_type: str = "components"
     ) -> dict[str, Any]:
-        fn = _entity_func("scripts", "upload", entity_type)
-        # upload_script expects a File object (binary upload), not a dict body.
-        # Build the File object from the script content string.
-        import io
-
-        from ros2_medkit_client._generated.types import File
-
-        file_obj = File(
-            payload=io.BytesIO(script_content.encode("utf-8")),
-            file_name="script.py",
-            mime_type="application/octet-stream",
-        )
-        return await self._call_void(
-            fn, **{_entity_id_kwarg(entity_type): entity_id, "body": file_obj}
+        path = f"/{quote(entity_type, safe='')}/{quote(entity_id, safe='')}/scripts"
+        return await self._raw_upload(
+            path, "script.py", script_content.encode("utf-8"), "text/x-python"
         )
 
     async def execute_script(
@@ -1299,24 +1309,21 @@ class SovdClient:
         return await self._call(updates.get_update_status.asyncio, update_id=update_id)
 
     async def prepare_update(self, update_id: str, config: dict[str, Any]) -> dict[str, Any]:
-        # prepare_update returns 202 Accepted on success.
-        # The generated client returns None for 202, which MedkitClient.call()
-        # treats as an error. Call the function directly and treat None as success.
-        return await self._call_update_action(
-            updates.prepare_update.asyncio, update_id=update_id, body=config
-        )
+        # 0.5.0: prepare is a body-less PUT returning 202 Accepted. The endpoint
+        # no longer accepts a request body; config is retained for MCP tool
+        # compatibility but not transmitted.
+        del config
+        return await self._call_update_action(updates.prepare_update.asyncio, update_id=update_id)
 
     async def execute_update(self, update_id: str, config: dict[str, Any]) -> dict[str, Any]:
-        # execute_update returns 202 Accepted on success.
-        return await self._call_update_action(
-            updates.execute_update.asyncio, update_id=update_id, body=config
-        )
+        # 0.5.0: execute is a body-less PUT returning 202 Accepted (see prepare_update).
+        del config
+        return await self._call_update_action(updates.execute_update.asyncio, update_id=update_id)
 
     async def automate_update(self, update_id: str, config: dict[str, Any]) -> dict[str, Any]:
-        # automate_update returns 202 Accepted on success.
-        return await self._call_update_action(
-            updates.automate_update.asyncio, update_id=update_id, body=config
-        )
+        # 0.5.0: automate is a body-less PUT returning 202 Accepted (see prepare_update).
+        del config
+        return await self._call_update_action(updates.automate_update.asyncio, update_id=update_id)
 
     async def _call_update_action(self, api_func: Any, **kwargs: Any) -> dict[str, Any]:
         """Call a generated update action function that returns 202 with None body."""

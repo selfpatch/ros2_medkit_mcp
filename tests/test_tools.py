@@ -119,7 +119,17 @@ class TestSovdClient:
         """Test successful entities listing."""
         respx.get("http://test-sovd:8080/api/v1/areas").mock(
             return_value=httpx.Response(
-                200, json={"items": [{"id": "powertrain", "name": "powertrain", "type": "Area"}]}
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "powertrain",
+                            "name": "powertrain",
+                            "type": "area",
+                            "href": "/areas/powertrain",
+                        }
+                    ]
+                },
             )
         )
         respx.get("http://test-sovd:8080/api/v1/components").mock(
@@ -127,15 +137,30 @@ class TestSovdClient:
                 200,
                 json={
                     "items": [
-                        {"id": "temp_sensor", "name": "Temperature Sensor", "type": "Component"},
-                        {"id": "rpm_sensor", "name": "RPM Sensor", "type": "Component"},
+                        {
+                            "id": "temp_sensor",
+                            "name": "Temperature Sensor",
+                            "type": "component",
+                            "href": "/components/temp_sensor",
+                        },
+                        {
+                            "id": "rpm_sensor",
+                            "name": "RPM Sensor",
+                            "type": "component",
+                            "href": "/components/rpm_sensor",
+                        },
                     ]
                 },
             )
         )
         respx.get("http://test-sovd:8080/api/v1/apps").mock(
             return_value=httpx.Response(
-                200, json={"items": [{"id": "node_1", "name": "node_1", "type": "App"}]}
+                200,
+                json={
+                    "items": [
+                        {"id": "node_1", "name": "node_1", "type": "app", "href": "/apps/node_1"}
+                    ]
+                },
             )
         )
         respx.get("http://test-sovd:8080/api/v1/functions").mock(
@@ -152,13 +177,32 @@ class TestSovdClient:
         """Test entities listing when some endpoints return errors."""
         respx.get("http://test-sovd:8080/api/v1/areas").mock(
             return_value=httpx.Response(
-                200, json={"items": [{"id": "powertrain", "name": "powertrain", "type": "Area"}]}
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "powertrain",
+                            "name": "powertrain",
+                            "type": "area",
+                            "href": "/areas/powertrain",
+                        }
+                    ]
+                },
             )
         )
         respx.get("http://test-sovd:8080/api/v1/components").mock(
             return_value=httpx.Response(
                 200,
-                json={"items": [{"id": "temp_sensor", "name": "temp_sensor", "type": "Component"}]},
+                json={
+                    "items": [
+                        {
+                            "id": "temp_sensor",
+                            "name": "temp_sensor",
+                            "type": "component",
+                            "href": "/components/temp_sensor",
+                        }
+                    ]
+                },
             )
         )
         # Apps and functions return 404 - should be caught
@@ -192,7 +236,8 @@ class TestSovdClient:
                         {
                             "id": "temp_sensor",
                             "name": "Temperature Sensor",
-                            "type": "Component",
+                            "type": "component",
+                            "href": "/components/temp_sensor",
                         }
                     ]
                 },
