@@ -302,13 +302,13 @@ class TestSovdClient:
 
     @respx.mock
     async def test_list_faults_sends_status_filter(self, client: SovdClient) -> None:
-        """A status/include_muted filter is sent as query params to the gateway."""
+        """The per-entity status filter is sent as a query param to the gateway."""
         route = respx.get(
             "http://test-sovd:8080/api/v1/components/motor/faults",
-            params={"status": "confirmed", "include_muted": "true"},
+            params={"status": "confirmed"},
         ).mock(return_value=httpx.Response(200, json={"items": [{"fault_code": "f1"}]}))
 
-        result = await client.list_faults("motor", status="confirmed", include_muted=True)
+        result = await client.list_faults("motor", status="confirmed")
 
         assert route.called
         assert len(result) == 1
@@ -350,6 +350,46 @@ class TestSovdClient:
         await client.list_updates(origin="fleet", target_version="2.0.0")
 
         assert route.called
+        await client.close()
+
+    @respx.mock
+    async def test_filtered_call_surfaces_gateway_error_envelope(self, client: SovdClient) -> None:
+        """A filtered (raw httpx) call surfaces the SOVD error envelope, not a bare status."""
+        respx.get(
+            "http://test-sovd:8080/api/v1/components/motor/faults",
+            params={"status": "bogus"},
+        ).mock(
+            return_value=httpx.Response(
+                400, json={"error_code": "invalid-parameter", "message": "Invalid status"}
+            )
+        )
+
+        with pytest.raises(SovdClientError) as exc_info:
+            await client.list_faults("motor", status="bogus")
+
+        assert "invalid-parameter" in str(exc_info.value)
+        assert "Invalid status" in str(exc_info.value)
+        await client.close()
+
+    @respx.mock
+    async def test_void_call_raises_on_undocumented_error_status(self, client: SovdClient) -> None:
+        """A destructive op must raise on a 403, not silently report success.
+
+        The generated parser returns None for statuses it does not enumerate
+        (401/403/429/...); _call_void must key success off the HTTP status, not a
+        None body, or destructive operations would report a false success.
+        """
+        respx.delete("http://test-sovd:8080/api/v1/components/motor/faults").mock(
+            return_value=httpx.Response(
+                403, json={"error_code": "forbidden", "message": "Insufficient role"}
+            )
+        )
+
+        with pytest.raises(SovdClientError) as exc_info:
+            await client.clear_all_faults("motor")
+
+        assert "forbidden" in str(exc_info.value)
+        assert exc_info.value.status_code == 403
         await client.close()
 
     @respx.mock
