@@ -311,8 +311,20 @@ class TestClientBulkDataMethods:
     async def test_list_bulk_data(self, client: SovdClient) -> None:
         """Test list_bulk_data method."""
         items = [
-            {"id": "uuid-1", "name": "File 1", "size": 1024},
-            {"id": "uuid-2", "name": "File 2", "size": 2048},
+            {
+                "id": "uuid-1",
+                "name": "File 1",
+                "size": 1024,
+                "mimetype": "application/x-mcap",
+                "creation_date": "2026-06-11T12:00:00Z",
+            },
+            {
+                "id": "uuid-2",
+                "name": "File 2",
+                "size": 2048,
+                "mimetype": "application/x-mcap",
+                "creation_date": "2026-06-11T12:05:00Z",
+            },
         ]
         respx.get("http://test-sovd:8080/api/v1/apps/motor/bulk-data/rosbags").mock(
             return_value=httpx.Response(200, json={"items": items})

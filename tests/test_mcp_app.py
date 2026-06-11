@@ -117,13 +117,32 @@ class TestCallToolIntegration:
         """Test entities_list tool integration."""
         respx.get("http://test-sovd:8080/api/v1/areas").mock(
             return_value=httpx.Response(
-                200, json={"items": [{"id": "powertrain", "name": "powertrain", "type": "Area"}]}
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "powertrain",
+                            "name": "powertrain",
+                            "type": "area",
+                            "href": "/areas/powertrain",
+                        }
+                    ]
+                },
             )
         )
         respx.get("http://test-sovd:8080/api/v1/components").mock(
             return_value=httpx.Response(
                 200,
-                json={"items": [{"id": "temp_sensor", "name": "temp_sensor", "type": "Component"}]},
+                json={
+                    "items": [
+                        {
+                            "id": "temp_sensor",
+                            "name": "temp_sensor",
+                            "type": "component",
+                            "href": "/components/temp_sensor",
+                        }
+                    ]
+                },
             )
         )
         respx.get("http://test-sovd:8080/api/v1/apps").mock(
@@ -147,7 +166,17 @@ class TestCallToolIntegration:
         """Test entities_list tool with filter."""
         respx.get("http://test-sovd:8080/api/v1/areas").mock(
             return_value=httpx.Response(
-                200, json={"items": [{"id": "powertrain", "name": "powertrain", "type": "Area"}]}
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "powertrain",
+                            "name": "powertrain",
+                            "type": "area",
+                            "href": "/areas/powertrain",
+                        }
+                    ]
+                },
             )
         )
         respx.get("http://test-sovd:8080/api/v1/components").mock(
@@ -155,8 +184,18 @@ class TestCallToolIntegration:
                 200,
                 json={
                     "items": [
-                        {"id": "temp_sensor", "name": "temp_sensor", "type": "Component"},
-                        {"id": "rpm_sensor", "name": "rpm_sensor", "type": "Component"},
+                        {
+                            "id": "temp_sensor",
+                            "name": "temp_sensor",
+                            "type": "component",
+                            "href": "/components/temp_sensor",
+                        },
+                        {
+                            "id": "rpm_sensor",
+                            "name": "rpm_sensor",
+                            "type": "component",
+                            "href": "/components/rpm_sensor",
+                        },
                     ]
                 },
             )
@@ -199,7 +238,17 @@ class TestCallToolIntegration:
         """Test list_operations tool integration."""
         respx.get("http://test-sovd:8080/api/v1/components/test-comp/operations").mock(
             return_value=httpx.Response(
-                200, json={"items": [{"id": "test_service", "name": "test_service"}]}
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "test_service",
+                            "name": "test_service",
+                            "asynchronous_execution": False,
+                            "proximity_proof_required": False,
+                        }
+                    ]
+                },
             )
         )
 
