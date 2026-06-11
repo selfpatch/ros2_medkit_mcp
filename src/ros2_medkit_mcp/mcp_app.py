@@ -17,6 +17,7 @@ from ros2_medkit_mcp.client import SovdClient, SovdClientError
 from ros2_medkit_mcp.config import Settings
 from ros2_medkit_mcp.models import (
     AcquireLockArgs,
+    AllFaultsListArgs,
     AppIdArgs,
     AreaComponentsArgs,
     AreaContainsArgs,
@@ -909,6 +910,21 @@ def register_tools(
                             "description": "Entity type",
                             "default": "components",
                         },
+                        "status": {
+                            "type": "string",
+                            "enum": ["pending", "confirmed", "cleared", "healed", "all"],
+                            "description": "Filter by fault status",
+                        },
+                        "include_muted": {
+                            "type": "boolean",
+                            "description": "Include muted faults in the response",
+                            "default": False,
+                        },
+                        "include_clusters": {
+                            "type": "boolean",
+                            "description": "Include fault clusters in the response",
+                            "default": False,
+                        },
                     },
                     "required": ["entity_id"],
                 },
@@ -966,7 +982,23 @@ def register_tools(
                 description="List all faults across the entire system. Returns faults from all components.",
                 inputSchema={
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "enum": ["pending", "confirmed", "cleared", "healed", "all"],
+                            "description": "Filter by fault status",
+                        },
+                        "include_muted": {
+                            "type": "boolean",
+                            "description": "Include muted faults in the response",
+                            "default": False,
+                        },
+                        "include_clusters": {
+                            "type": "boolean",
+                            "description": "Include fault clusters in the response",
+                            "default": False,
+                        },
+                    },
                     "required": [],
                 },
             ),
@@ -1788,6 +1820,15 @@ def register_tools(
                             "description": "Entity type",
                             "default": "components",
                         },
+                        "severity": {
+                            "type": "string",
+                            "enum": ["debug", "info", "warning", "error", "fatal"],
+                            "description": "Filter by minimum severity",
+                        },
+                        "context": {
+                            "type": "string",
+                            "description": "Filter by logger context substring (max 256 chars)",
+                        },
                     },
                     "required": ["entity_id"],
                 },
@@ -2453,7 +2494,16 @@ def register_tools(
                 description="List all registered software updates.",
                 inputSchema={
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                        "origin": {
+                            "type": "string",
+                            "description": "Filter by update origin identifier",
+                        },
+                        "target_version": {
+                            "type": "string",
+                            "description": "Filter by target version",
+                        },
+                    },
                 },
             ),
             Tool(
@@ -2658,7 +2708,13 @@ def register_tools(
 
             elif normalized_name == "ros2_medkit_faults_list":
                 args = FaultsListArgs(**arguments)
-                faults = await client.list_faults(args.entity_id, args.entity_type)
+                faults = await client.list_faults(
+                    args.entity_id,
+                    args.entity_type,
+                    status=args.status,
+                    include_muted=args.include_muted,
+                    include_clusters=args.include_clusters,
+                )
                 return format_fault_list(faults)
 
             elif normalized_name == "ros2_medkit_faults_get":
@@ -2738,7 +2794,12 @@ def register_tools(
             # ==================== Extended Faults ====================
 
             elif normalized_name == "ros2_medkit_all_faults_list":
-                faults = await client.list_all_faults()
+                args = AllFaultsListArgs(**arguments)
+                faults = await client.list_all_faults(
+                    status=args.status,
+                    include_muted=args.include_muted,
+                    include_clusters=args.include_clusters,
+                )
                 return format_fault_list(faults)
 
             elif normalized_name == "ros2_medkit_clear_all_faults":
@@ -2938,7 +2999,9 @@ def register_tools(
 
             elif normalized_name == "ros2_medkit_list_logs":
                 args = ListLogsArgs(**arguments)
-                result = await client.list_logs(args.entity_id, args.entity_type)
+                result = await client.list_logs(
+                    args.entity_id, args.entity_type, severity=args.severity, context=args.context
+                )
                 return format_json_response(result)
 
             elif normalized_name == "ros2_medkit_get_log_configuration":
@@ -3112,8 +3175,10 @@ def register_tools(
             # ==================== Software Updates ====================
 
             elif normalized_name == "ros2_medkit_list_updates":
-                ListUpdatesArgs(**arguments)
-                result = await client.list_updates()
+                args = ListUpdatesArgs(**arguments)
+                result = await client.list_updates(
+                    origin=args.origin, target_version=args.target_version
+                )
                 return format_json_response(result)
 
             elif normalized_name == "ros2_medkit_register_update":

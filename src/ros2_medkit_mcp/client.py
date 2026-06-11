@@ -86,6 +86,20 @@ def _extract_items(result: Any) -> list[dict[str, Any]]:
     return [d] if d else []
 
 
+def _fault_query_params(
+    status: str | None, include_muted: bool, include_clusters: bool
+) -> dict[str, str]:
+    """Build the fault-list query params shared by the entity and global lists."""
+    params: dict[str, str] = {}
+    if status:
+        params["status"] = status
+    if include_muted:
+        params["include_muted"] = "true"
+    if include_clusters:
+        params["include_clusters"] = "true"
+    return params
+
+
 def _extract_filename(content_disposition: str) -> str | None:
     """Extract filename from Content-Disposition header."""
     if "filename=" not in content_disposition:
@@ -592,6 +606,26 @@ class SovdClient:
         except httpx.RequestError as e:
             raise SovdClientError(message=f"Request failed: {e}") from e
 
+    async def _raw_get_items(self, path: str, params: dict[str, str]) -> list[dict[str, Any]]:
+        """GET a collection via raw httpx with query parameters.
+
+        The 0.5.0 generated client cannot pass query parameters: the spec omits
+        them even though the gateway reads them (see selfpatch/ros2_medkit#416).
+        Use raw httpx for filtered list calls until the client is regenerated
+        from the fixed spec. Path segments must be pre-encoded by the caller.
+        """
+        try:
+            hc = await self._httpx_client()
+            response = await hc.get(path, params=params)
+            if not response.is_success:
+                raise SovdClientError(
+                    message=f"Gateway returned HTTP {response.status_code}",
+                    status_code=response.status_code,
+                )
+            return _extract_items(response.json())
+        except httpx.RequestError as e:
+            raise SovdClientError(message=f"Request failed: {e}") from e
+
     # ==================== Server ====================
 
     async def get_version(self) -> dict[str, Any]:
@@ -693,8 +727,17 @@ class SovdClient:
     # ==================== Faults ====================
 
     async def list_faults(
-        self, entity_id: str, entity_type: str = "components"
+        self,
+        entity_id: str,
+        entity_type: str = "components",
+        status: str | None = None,
+        include_muted: bool = False,
+        include_clusters: bool = False,
     ) -> list[dict[str, Any]]:
+        params = _fault_query_params(status, include_muted, include_clusters)
+        if params:
+            path = f"/{quote(entity_type, safe='')}/{quote(entity_id, safe='')}/faults"
+            return await self._raw_get_items(path, params)
         fn = _entity_func("faults", "list", entity_type)
         return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
 
@@ -720,7 +763,15 @@ class SovdClient:
         fn = _entity_func("faults", "clear_all", entity_type)
         return await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id})
 
-    async def list_all_faults(self) -> list[dict[str, Any]]:
+    async def list_all_faults(
+        self,
+        status: str | None = None,
+        include_muted: bool = False,
+        include_clusters: bool = False,
+    ) -> list[dict[str, Any]]:
+        params = _fault_query_params(status, include_muted, include_clusters)
+        if params:
+            return await self._raw_get_items("/faults", params)
         return _extract_items(await self._call(faults.list_all_faults.asyncio))
 
     async def get_fault_snapshots(
@@ -1017,8 +1068,20 @@ class SovdClient:
     # ==================== Logs ====================
 
     async def list_logs(
-        self, entity_id: str, entity_type: str = "components"
+        self,
+        entity_id: str,
+        entity_type: str = "components",
+        severity: str | None = None,
+        context: str | None = None,
     ) -> list[dict[str, Any]]:
+        params: dict[str, str] = {}
+        if severity:
+            params["severity"] = severity
+        if context:
+            params["context"] = context
+        if params:
+            path = f"/{quote(entity_type, safe='')}/{quote(entity_id, safe='')}/logs"
+            return await self._raw_get_items(path, params)
         fn = _entity_func("logs", "list", entity_type)
         return _extract_items(await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id}))
 
@@ -1296,7 +1359,16 @@ class SovdClient:
 
     # ==================== Software Updates ====================
 
-    async def list_updates(self) -> list[dict[str, Any]]:
+    async def list_updates(
+        self, origin: str | None = None, target_version: str | None = None
+    ) -> list[dict[str, Any]]:
+        params: dict[str, str] = {}
+        if origin:
+            params["origin"] = origin
+        if target_version:
+            params["target-version"] = target_version
+        if params:
+            return await self._raw_get_items("/updates", params)
         return _extract_items(await self._call(updates.list_updates.asyncio))
 
     async def register_update(self, update_config: dict[str, Any]) -> dict[str, Any]:

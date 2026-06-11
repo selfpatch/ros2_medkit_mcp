@@ -301,6 +301,58 @@ class TestSovdClient:
         await client.close()
 
     @respx.mock
+    async def test_list_faults_sends_status_filter(self, client: SovdClient) -> None:
+        """A status/include_muted filter is sent as query params to the gateway."""
+        route = respx.get(
+            "http://test-sovd:8080/api/v1/components/motor/faults",
+            params={"status": "confirmed", "include_muted": "true"},
+        ).mock(return_value=httpx.Response(200, json={"items": [{"fault_code": "f1"}]}))
+
+        result = await client.list_faults("motor", status="confirmed", include_muted=True)
+
+        assert route.called
+        assert len(result) == 1
+        await client.close()
+
+    @respx.mock
+    async def test_list_all_faults_sends_status_filter(self, client: SovdClient) -> None:
+        """The global fault list forwards the status filter as a query param."""
+        route = respx.get("http://test-sovd:8080/api/v1/faults", params={"status": "all"}).mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+
+        await client.list_all_faults(status="all")
+
+        assert route.called
+        await client.close()
+
+    @respx.mock
+    async def test_list_logs_sends_severity_filter(self, client: SovdClient) -> None:
+        """A severity/context filter is sent as query params to the gateway."""
+        route = respx.get(
+            "http://test-sovd:8080/api/v1/components/motor/logs",
+            params={"severity": "error", "context": "engine"},
+        ).mock(return_value=httpx.Response(200, json={"items": []}))
+
+        await client.list_logs("motor", severity="error", context="engine")
+
+        assert route.called
+        await client.close()
+
+    @respx.mock
+    async def test_list_updates_sends_origin_filter(self, client: SovdClient) -> None:
+        """The update list forwards origin/target-version as query params."""
+        route = respx.get(
+            "http://test-sovd:8080/api/v1/updates",
+            params={"origin": "fleet", "target-version": "2.0.0"},
+        ).mock(return_value=httpx.Response(200, json={"items": []}))
+
+        await client.list_updates(origin="fleet", target_version="2.0.0")
+
+        assert route.called
+        await client.close()
+
+    @respx.mock
     async def test_list_faults_different_component(self, client: SovdClient) -> None:
         """Test faults listing for different component."""
         respx.get("http://test-sovd:8080/api/v1/components/other-component/faults").mock(
