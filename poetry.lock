@@ -1244,13 +1244,13 @@ httpx = ">=0.25.0"
 
 [[package]]
 name = "ros2-medkit-client"
-version = "0.5.0"
+version = "0.6.0"
 description = "Async Python client for the ros2_medkit gateway"
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "ros2_medkit_client-0.5.0-py3-none-any.whl", hash = "sha256:b8cacefb5bade0e975f7d5f8fbba32209e111942b19a566f0563f38a1f0d0e37"},
+    {file = "ros2_medkit_client-0.6.0-py3-none-any.whl", hash = "sha256:36806724b570105332563f26005049d42252004267d27b1a1ca648c8eba7c203"},
 ]
 
 [package.dependencies]
@@ -1263,7 +1263,7 @@ dev = ["pytest (>=8.0)", "pytest-asyncio (>=0.24)", "respx (>=0.22)", "ruff (>=0
 
 [package.source]
 type = "url"
-url = "https://github.com/selfpatch/ros2_medkit_clients/releases/download/py-v0.5.0/ros2_medkit_client-0.5.0-py3-none-any.whl"
+url = "https://github.com/selfpatch/ros2_medkit_clients/releases/download/py-v0.6.0/ros2_medkit_client-0.6.0-py3-none-any.whl"
 
 [[package]]
 name = "rpds-py"
@@ -1812,4 +1812,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "26a82b5b97d647f03b4dbca4029849a294c0dd015f721beb73fd145db98baa75"
+content-hash = "0a033fc8257acca535ed44168a80a7f2b842b0c4482d98b10f9c33d9d56b5db2"
