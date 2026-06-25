@@ -1190,6 +1190,57 @@ class AutomateUpdateArgs(BaseModel):
     update_id: str = Field(..., description="The update identifier")
 
 
+# ==================== Lifecycle Argument Models ====================
+
+
+class LifecycleEntityType(str, Enum):
+    """Entity types that support the lifecycle status API.
+
+    The gateway exposes lifecycle only for apps and components (not areas
+    or functions).
+    """
+
+    APPS = "apps"
+    COMPONENTS = "components"
+
+
+class LifecycleAction(str, Enum):
+    """Lifecycle transition actions (hyphenated SOVD action names)."""
+
+    START = "start"
+    RESTART = "restart"
+    FORCE_RESTART = "force-restart"
+    SHUTDOWN = "shutdown"
+    FORCE_SHUTDOWN = "force-shutdown"
+
+
+class StatusGetArgs(BaseModel):
+    """Arguments for ros2_medkit_status_get tool."""
+
+    entity_type: LifecycleEntityType = Field(
+        ...,
+        description="Entity type: 'apps' or 'components'",
+    )
+    entity_id: str = Field(..., description="The entity identifier")
+
+
+class StatusSetArgs(BaseModel):
+    """Arguments for ros2_medkit_status_set tool."""
+
+    entity_type: LifecycleEntityType = Field(
+        ...,
+        description="Entity type: 'apps' or 'components'",
+    )
+    entity_id: str = Field(..., description="The entity identifier")
+    action: LifecycleAction = Field(
+        ...,
+        description=(
+            "Lifecycle transition: 'start', 'restart', 'force-restart', "
+            "'shutdown', or 'force-shutdown'"
+        ),
+    )
+
+
 class ToolResult(BaseModel):
     """Standard result wrapper for tool responses."""
 

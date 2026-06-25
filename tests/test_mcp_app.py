@@ -4,6 +4,7 @@ import httpx
 import pytest
 import respx
 from mcp.types import TextContent
+from pydantic import ValidationError
 
 from ros2_medkit_mcp.client import SovdClient, SovdClientError
 from ros2_medkit_mcp.config import Settings
@@ -11,7 +12,11 @@ from ros2_medkit_mcp.mcp_app import TOOL_ALIASES, format_error, format_json_resp
 from ros2_medkit_mcp.models import (
     EntitiesListArgs,
     FaultsListArgs,
+    LifecycleAction,
+    LifecycleEntityType,
     ListOperationsArgs,
+    StatusGetArgs,
+    StatusSetArgs,
     filter_entities,
 )
 
@@ -50,6 +55,13 @@ class TestToolAliases:
         """Test legacy sovd_* aliases resolve to ros2_medkit_* canonical names."""
         assert TOOL_ALIASES.get("sovd_version") == "ros2_medkit_version"
         assert TOOL_ALIASES.get("sovd_entities_list") == "ros2_medkit_entities_list"
+
+    def test_lifecycle_aliases(self) -> None:
+        """Test lifecycle status tool aliases resolve to canonical names."""
+        assert TOOL_ALIASES.get("ros2_medkit_status_get") == "ros2_medkit_status_get"
+        assert TOOL_ALIASES.get("ros2_medkit_status_set") == "ros2_medkit_status_set"
+        assert TOOL_ALIASES.get("sovd_status_get") == "ros2_medkit_status_get"
+        assert TOOL_ALIASES.get("sovd_status_set") == "ros2_medkit_status_set"
 
 
 class TestFormatFunctions:
@@ -303,3 +315,34 @@ class TestArgumentModels:
 
         args_with_filter = EntitiesListArgs(filter="test")
         assert args_with_filter.filter == "test"
+
+    def test_status_get_args_valid(self) -> None:
+        """Test StatusGetArgs accepts apps and components entity types."""
+        args = StatusGetArgs(entity_type="apps", entity_id="motor")
+        assert args.entity_type is LifecycleEntityType.APPS
+        assert args.entity_id == "motor"
+
+        args = StatusGetArgs(entity_type="components", entity_id="ecu")
+        assert args.entity_type is LifecycleEntityType.COMPONENTS
+
+    def test_status_get_args_rejects_invalid_entity_type(self) -> None:
+        """Test StatusGetArgs rejects entity types without lifecycle support."""
+        with pytest.raises(ValidationError):
+            StatusGetArgs(entity_type="areas", entity_id="powertrain")
+
+    def test_status_set_args_valid_actions(self) -> None:
+        """Test StatusSetArgs accepts all five lifecycle transitions."""
+        for action, expected in (
+            ("start", LifecycleAction.START),
+            ("restart", LifecycleAction.RESTART),
+            ("force-restart", LifecycleAction.FORCE_RESTART),
+            ("shutdown", LifecycleAction.SHUTDOWN),
+            ("force-shutdown", LifecycleAction.FORCE_SHUTDOWN),
+        ):
+            args = StatusSetArgs(entity_type="apps", entity_id="motor", action=action)
+            assert args.action is expected
+
+    def test_status_set_args_rejects_invalid_action(self) -> None:
+        """Test StatusSetArgs rejects unknown actions."""
+        with pytest.raises(ValidationError):
+            StatusSetArgs(entity_type="apps", entity_id="motor", action="bogus")

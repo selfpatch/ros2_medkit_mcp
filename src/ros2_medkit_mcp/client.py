@@ -26,6 +26,7 @@ from ros2_medkit_client.api import (
     data,
     discovery,
     faults,
+    lifecycle,
     locking,
     logs,
     operations,
@@ -457,7 +458,42 @@ _ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
             "functions": subscriptions.delete_function_subscription,
         },
     },
+    # Lifecycle is exposed only for apps and components (no areas/functions).
+    # Action keys use the hyphenated SOVD action names (force-restart,
+    # force-shutdown); the generated modules use underscores.
+    "lifecycle": {
+        "get": {
+            "components": lifecycle.get_components_status,
+            "apps": lifecycle.get_apps_status,
+        },
+        "start": {
+            "components": lifecycle.put_components_status_start,
+            "apps": lifecycle.put_apps_status_start,
+        },
+        "restart": {
+            "components": lifecycle.put_components_status_restart,
+            "apps": lifecycle.put_apps_status_restart,
+        },
+        "force-restart": {
+            "components": lifecycle.put_components_status_force_restart,
+            "apps": lifecycle.put_apps_status_force_restart,
+        },
+        "shutdown": {
+            "components": lifecycle.put_components_status_shutdown,
+            "apps": lifecycle.put_apps_status_shutdown,
+        },
+        "force-shutdown": {
+            "components": lifecycle.put_components_status_force_shutdown,
+            "apps": lifecycle.put_apps_status_force_shutdown,
+        },
+    },
 }
+
+# Lifecycle is exposed only for apps and components.
+_LIFECYCLE_ENTITY_TYPES = frozenset({"apps", "components"})
+
+# Valid lifecycle transition actions (hyphenated SOVD action names).
+_LIFECYCLE_ACTIONS = frozenset({"start", "restart", "force-restart", "shutdown", "force-shutdown"})
 
 
 # Validate all function references at import time
@@ -1439,6 +1475,48 @@ class SovdClient:
 
     async def delete_update(self, update_id: str) -> dict[str, Any]:
         return await self._call_void(updates.delete_update.asyncio, update_id=update_id)
+
+    # ==================== Lifecycle ====================
+
+    async def get_status(self, entity_type: str, entity_id: str) -> dict[str, Any]:
+        """Get the lifecycle status of an app or component.
+
+        Lifecycle is exposed only for ``apps`` and ``components``; any other
+        entity_type raises SovdClientError.
+        """
+        if entity_type not in _LIFECYCLE_ENTITY_TYPES:
+            raise SovdClientError(
+                message=(
+                    f"Lifecycle status is only available for apps and components, "
+                    f"not '{entity_type}'"
+                )
+            )
+        fn = _entity_func("lifecycle", "get", entity_type)
+        return await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id})
+
+    async def set_status(self, entity_type: str, entity_id: str, action: str) -> dict[str, Any]:
+        """Trigger a lifecycle transition on an app or component.
+
+        ``action`` is one of start, restart, force-restart, shutdown,
+        force-shutdown. The transition PUTs are body-less and return 202.
+        Lifecycle is exposed only for ``apps`` and ``components``.
+        """
+        if entity_type not in _LIFECYCLE_ENTITY_TYPES:
+            raise SovdClientError(
+                message=(
+                    f"Lifecycle transitions are only available for apps and "
+                    f"components, not '{entity_type}'"
+                )
+            )
+        if action not in _LIFECYCLE_ACTIONS:
+            raise SovdClientError(
+                message=(
+                    f"Unknown lifecycle action '{action}'; expected one of "
+                    f"{', '.join(sorted(_LIFECYCLE_ACTIONS))}"
+                )
+            )
+        fn = _entity_func("lifecycle", action, entity_type)
+        return await self._call_void(fn, **{_entity_id_kwarg(entity_type): entity_id})
 
 
 @asynccontextmanager
