@@ -644,12 +644,15 @@ class SovdClient:
             raise SovdClientError(message=f"Request failed: {e}") from e
 
     async def _raw_get_items(self, path: str, params: dict[str, str]) -> list[dict[str, Any]]:
-        """GET a collection via raw httpx with query parameters.
+        """GET a collection via raw httpx with string query parameters.
 
-        The 0.5.0 generated client cannot pass query parameters: the spec omits
-        them even though the gateway reads them (see selfpatch/ros2_medkit#416).
-        Use raw httpx for filtered list calls until the client is regenerated
-        from the fixed spec. Path segments must be pre-encoded by the caller.
+        The generated per-endpoint list functions type their filter parameters
+        as endpoint-specific enums (e.g. ``ListComponentFaultsStatus``,
+        ``ListComponentLogsSeverity``). Routing the filtered list calls (faults,
+        logs, updates) through this single helper passes plain string filters
+        straight through, instead of mapping each filter to its per-entity-type
+        enum and rejecting values the gateway would otherwise accept. Path
+        segments must be pre-encoded by the caller.
         """
         try:
             hc = await self._httpx_client()
@@ -1418,16 +1421,16 @@ class SovdClient:
         return await self._call(updates.get_update_status.asyncio, update_id=update_id)
 
     async def prepare_update(self, update_id: str) -> dict[str, Any]:
-        # 0.5.0: prepare is a body-less PUT returning 202 Accepted; the endpoint
-        # takes no request body.
+        # prepare is a body-less PUT returning 202 Accepted; the endpoint takes
+        # no request body.
         return await self._call_update_action(updates.prepare_update.asyncio, update_id=update_id)
 
     async def execute_update(self, update_id: str) -> dict[str, Any]:
-        # 0.5.0: execute is a body-less PUT returning 202 Accepted (see prepare_update).
+        # execute is a body-less PUT returning 202 Accepted (see prepare_update).
         return await self._call_update_action(updates.execute_update.asyncio, update_id=update_id)
 
     async def automate_update(self, update_id: str) -> dict[str, Any]:
-        # 0.5.0: automate is a body-less PUT returning 202 Accepted (see prepare_update).
+        # automate is a body-less PUT returning 202 Accepted (see prepare_update).
         return await self._call_update_action(updates.automate_update.asyncio, update_id=update_id)
 
     async def _call_update_action(self, api_func: Any, **kwargs: Any) -> dict[str, Any]:
