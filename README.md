@@ -14,7 +14,7 @@ This server does **not** implement SOVD itself. It provides MCP tools that call 
 
 ## Features
 
-- **Full ros2_medkit gateway coverage**: Discovery, component data, operations (services/actions), and configurations (ROS 2 parameters)
+- **Full ros2_medkit gateway coverage**: Discovery, component data, operations (services/actions), configurations (ROS 2 parameters), and entity lifecycle status (apps/components)
 - **Dual transport support**: stdio and streamable-http
 - **Async HTTP client** using httpx
 - **Pydantic validation** for configuration and models
@@ -381,6 +381,29 @@ Reset all configurations (parameters) to their default values.
 - `component_id` (required, string): The component identifier
 
 **Returns:** Response from `DELETE /components/{component_id}/configurations`
+
+### Lifecycle Tools
+
+Lifecycle status is only available for apps and components (not areas or functions).
+
+#### `ros2_medkit_status_get`
+Get the lifecycle status of an app or component (e.g. `ready` / `notReady`).
+
+**Arguments:**
+- `entity_type` (required, string): `apps` or `components`
+- `entity_id` (required, string): The entity identifier
+
+**Returns:** Response from `GET /{entity_type}/{entity_id}/status`
+
+#### `ros2_medkit_status_set`
+Trigger a lifecycle transition on an app or component. **Warning:** `shutdown`, `force-shutdown`, `restart`, and `force-restart` affect the running node or host process.
+
+**Arguments:**
+- `entity_type` (required, string): `apps` or `components`
+- `entity_id` (required, string): The entity identifier
+- `action` (required, string): one of `start`, `restart`, `force-restart`, `shutdown`, `force-shutdown`
+
+**Returns:** `202 Accepted` from `PUT /{entity_type}/{entity_id}/status/{action}` (no body)
 
 ## MCP Resources
 

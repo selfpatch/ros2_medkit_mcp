@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from ros2_medkit_mcp.client import SovdClient
+from ros2_medkit_mcp.client import SovdClient, SovdClientError
 from ros2_medkit_mcp.config import Settings
 from ros2_medkit_mcp.mcp_app import format_json_response
 
@@ -513,6 +513,116 @@ class TestUpdatesTools:
         )
         result = await client.automate_update("upd-1")
         assert result == {}
+        await client.close()
+
+
+class TestLifecycleTools:
+    """Tests for entity lifecycle status tools (apps and components only).
+
+    The gateway 0.6.0 lifecycle API exposes ``GET /{et}/{id}/status`` (returns a
+    LifecycleStatusResponse with a required ``status`` enum) and
+    ``PUT /{et}/{id}/status/{action}`` transitions (202 No Content) for
+    et in {apps, components}. The action path uses hyphens (force-restart,
+    force-shutdown).
+    """
+
+    STATUS_RESPONSE = {
+        "status": "ready",
+        "start": "/apps/motor/status/start",
+        "restart": "/apps/motor/status/restart",
+        "force-restart": "/apps/motor/status/force-restart",
+        "shutdown": "/apps/motor/status/shutdown",
+        "force-shutdown": "/apps/motor/status/force-shutdown",
+    }
+
+    @respx.mock
+    async def test_get_status_apps(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/apps/motor/status").mock(
+            return_value=httpx.Response(200, json=self.STATUS_RESPONSE)
+        )
+        result = await client.get_status("apps", "motor")
+        assert result["status"] == "ready"
+        await client.close()
+
+    @respx.mock
+    async def test_get_status_components(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/components/ecu/status").mock(
+            return_value=httpx.Response(200, json={"status": "notReady"})
+        )
+        result = await client.get_status("components", "ecu")
+        assert result["status"] == "notReady"
+        await client.close()
+
+    async def test_get_status_invalid_entity_type(self, client: SovdClient) -> None:
+        with pytest.raises(SovdClientError):
+            await client.get_status("areas", "powertrain")
+        await client.close()
+
+    @respx.mock
+    async def test_set_status_start_apps(self, client: SovdClient) -> None:
+        respx.put("http://test-sovd:8080/api/v1/apps/motor/status/start").mock(
+            return_value=httpx.Response(202)
+        )
+        result = await client.set_status("apps", "motor", "start")
+        assert result == {}
+        await client.close()
+
+    @respx.mock
+    async def test_set_status_restart_components(self, client: SovdClient) -> None:
+        respx.put("http://test-sovd:8080/api/v1/components/ecu/status/restart").mock(
+            return_value=httpx.Response(202)
+        )
+        result = await client.set_status("components", "ecu", "restart")
+        assert result == {}
+        await client.close()
+
+    @respx.mock
+    async def test_set_status_force_restart_apps(self, client: SovdClient) -> None:
+        # The action enum uses a hyphen at the API level (force-restart) but the
+        # generated module name uses an underscore (put_apps_status_force_restart).
+        respx.put("http://test-sovd:8080/api/v1/apps/motor/status/force-restart").mock(
+            return_value=httpx.Response(202)
+        )
+        result = await client.set_status("apps", "motor", "force-restart")
+        assert result == {}
+        await client.close()
+
+    @respx.mock
+    async def test_set_status_shutdown_components(self, client: SovdClient) -> None:
+        respx.put("http://test-sovd:8080/api/v1/components/ecu/status/shutdown").mock(
+            return_value=httpx.Response(202)
+        )
+        result = await client.set_status("components", "ecu", "shutdown")
+        assert result == {}
+        await client.close()
+
+    @respx.mock
+    async def test_set_status_force_shutdown_apps(self, client: SovdClient) -> None:
+        respx.put("http://test-sovd:8080/api/v1/apps/motor/status/force-shutdown").mock(
+            return_value=httpx.Response(202)
+        )
+        result = await client.set_status("apps", "motor", "force-shutdown")
+        assert result == {}
+        await client.close()
+
+    async def test_set_status_invalid_entity_type(self, client: SovdClient) -> None:
+        with pytest.raises(SovdClientError):
+            await client.set_status("functions", "navigation", "start")
+        await client.close()
+
+    async def test_set_status_invalid_action(self, client: SovdClient) -> None:
+        with pytest.raises(SovdClientError):
+            await client.set_status("apps", "motor", "bogus")
+        await client.close()
+
+    @respx.mock
+    async def test_get_status_dispatch_smoke(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/apps/motor/status").mock(
+            return_value=httpx.Response(200, json=self.STATUS_RESPONSE)
+        )
+        result = await client.get_status("apps", "motor")
+        formatted = format_json_response(result)
+        assert "ready" in formatted[0].text
         await client.close()
 
 

@@ -82,6 +82,8 @@ from ros2_medkit_mcp.models import (
     RosbagSnapshot,
     SetConfigurationArgs,
     SetLogConfigurationArgs,
+    StatusGetArgs,
+    StatusSetArgs,
     SubareasArgs,
     SubcomponentsArgs,
     SystemFaultSnapshotsArgs,
@@ -690,6 +692,8 @@ TOOL_ALIASES: dict[str, str] = {
     "ros2_medkit_execute_update": "ros2_medkit_execute_update",
     "ros2_medkit_automate_update": "ros2_medkit_automate_update",
     "ros2_medkit_delete_update": "ros2_medkit_delete_update",
+    "ros2_medkit_status_get": "ros2_medkit_status_get",
+    "ros2_medkit_status_set": "ros2_medkit_status_set",
     # Legacy sovd_* aliases (backwards compatibility)
     "sovd_version": "ros2_medkit_version",
     "sovd_health": "ros2_medkit_health",
@@ -775,6 +779,8 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_execute_update": "ros2_medkit_execute_update",
     "sovd_automate_update": "ros2_medkit_automate_update",
     "sovd_delete_update": "ros2_medkit_delete_update",
+    "sovd_status_get": "ros2_medkit_status_get",
+    "sovd_status_set": "ros2_medkit_status_set",
     # Dot-notation aliases (legacy)
     "sovd.version": "ros2_medkit_version",
     "sovd.entities.list": "ros2_medkit_entities_list",
@@ -2601,6 +2607,67 @@ def register_tools(
                     "required": ["update_id"],
                 },
             ),
+            Tool(
+                name="ros2_medkit_status_get",
+                description=(
+                    "Get the lifecycle status of an app or component"
+                    " (e.g. ready / notReady). Lifecycle is only available for"
+                    " apps and components."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_type": {
+                            "type": "string",
+                            "enum": ["apps", "components"],
+                            "description": "Entity type: 'apps' or 'components'",
+                        },
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                    },
+                    "required": ["entity_type", "entity_id"],
+                },
+            ),
+            Tool(
+                name="ros2_medkit_status_set",
+                description=(
+                    "Trigger a lifecycle transition on an app or component."
+                    " WARNING: shutdown/force-shutdown/restart/force-restart"
+                    " affect the running node or host process. Lifecycle is only"
+                    " available for apps and components."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entity_type": {
+                            "type": "string",
+                            "enum": ["apps", "components"],
+                            "description": "Entity type: 'apps' or 'components'",
+                        },
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The entity identifier",
+                        },
+                        "action": {
+                            "type": "string",
+                            "enum": [
+                                "start",
+                                "restart",
+                                "force-restart",
+                                "shutdown",
+                                "force-shutdown",
+                            ],
+                            "description": (
+                                "Lifecycle transition: 'start', 'restart',"
+                                " 'force-restart', 'shutdown', or 'force-shutdown'"
+                            ),
+                        },
+                    },
+                    "required": ["entity_type", "entity_id", "action"],
+                },
+            ),
         ]
         # Append plugin tools
         if plugins:
@@ -3185,6 +3252,24 @@ def register_tools(
             elif normalized_name == "ros2_medkit_delete_update":
                 args = GetUpdateArgs(**arguments)
                 result = await client.delete_update(args.update_id)
+                return format_json_response(result)
+
+            # ==================== Lifecycle ====================
+
+            elif normalized_name == "ros2_medkit_status_get":
+                status_get_args = StatusGetArgs(**arguments)
+                result = await client.get_status(
+                    status_get_args.entity_type.value, status_get_args.entity_id
+                )
+                return format_json_response(result)
+
+            elif normalized_name == "ros2_medkit_status_set":
+                status_set_args = StatusSetArgs(**arguments)
+                result = await client.set_status(
+                    status_set_args.entity_type.value,
+                    status_set_args.entity_id,
+                    status_set_args.action.value,
+                )
                 return format_json_response(result)
 
             else:
