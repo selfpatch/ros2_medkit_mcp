@@ -57,6 +57,7 @@ from ros2_medkit_mcp.models import (
     FaultSnapshotsArgs,
     FreezeFrameSnapshot,
     FunctionIdArgs,
+    GatewaySnapshot,
     GetConfigurationArgs,
     GetCyclicSubArgs,
     GetLockArgs,
@@ -250,6 +251,35 @@ def format_snapshot(snapshot: FreezeFrameSnapshot | RosbagSnapshot) -> str:
     return "\n".join(lines)
 
 
+def format_gateway_snapshot(snapshot: GatewaySnapshot) -> str:
+    """Format one environment_data.snapshots entry for display.
+
+    Args:
+        snapshot: A freeze frame or rosbag entry as the gateway sends it.
+
+    Returns:
+        Formatted string describing the snapshot.
+    """
+    lines = [f"  Snapshot: {snapshot.name or snapshot.type}"]
+    if snapshot.captured_at:
+        lines.append(f"    Captured At: {snapshot.captured_at}")
+
+    if snapshot.type == "rosbag":
+        # The URI carries the recording id, which is what distinguishes one
+        # occurrence's black box from another's.
+        lines.append(f"    Download URI: {snapshot.bulk_data_uri}")
+        if snapshot.size_bytes:
+            lines.append(f"    File Size: {snapshot.size_bytes / (1024 * 1024):.2f} MB")
+        if snapshot.duration_sec is not None:
+            lines.append(f"    Duration: {snapshot.duration_sec:.2f}s")
+        if snapshot.format:
+            lines.append(f"    Format: {snapshot.format}")
+    elif snapshot.data is not None:
+        lines.append(f"    Data: {snapshot.data}")
+
+    return "\n".join(lines)
+
+
 def format_environment_data(env_data: EnvironmentData) -> str:
     """Format environment data for LLM readability.
 
@@ -261,18 +291,24 @@ def format_environment_data(env_data: EnvironmentData) -> str:
     """
     lines = ["\nEnvironment Data:"]
 
-    if env_data.extended_data_records:
-        records = env_data.extended_data_records
+    # Read from environment_data.snapshots, which is where the gateway actually
+    # puts them, discriminated by `type`. The freezeFrameSnapshots /
+    # rosbagSnapshots containers under extended_data_records are never populated,
+    # so everything below used to render nothing at all.
+    freeze_frames = [s for s in env_data.snapshots if s.type == "freeze_frame"]
+    recordings = [s for s in env_data.snapshots if s.type == "rosbag"]
 
-        if records.freeze_frame_snapshots:
-            lines.append(f"  Freeze Frame Snapshots ({len(records.freeze_frame_snapshots)}):")
-            for snap in records.freeze_frame_snapshots:
-                lines.append(format_snapshot(snap))
+    if freeze_frames:
+        lines.append(f"  Freeze Frame Snapshots ({len(freeze_frames)}):")
+        for snap in freeze_frames:
+            lines.append(format_gateway_snapshot(snap))
 
-        if records.rosbag_snapshots:
-            lines.append(f"  Rosbag Snapshots ({len(records.rosbag_snapshots)}):")
-            for snap in records.rosbag_snapshots:
-                lines.append(format_snapshot(snap))
+    if recordings:
+        # Plural on purpose: since ros2_medkit#620 a fault keeps one black box
+        # per occurrence, and each is downloaded by its own URI.
+        lines.append(f"  Rosbag Recordings ({len(recordings)}):")
+        for snap in recordings:
+            lines.append(format_gateway_snapshot(snap))
 
     return "\n".join(lines)
 
@@ -521,22 +557,14 @@ async def download_rosbags_for_fault(
             )
         ]
 
-    # Get extended data records
-    records = env_data.get("extendedDataRecords") or env_data.get("extended_data_records")
-    if not records:
-        return [
-            TextContent(
-                type="text",
-                text=f"No snapshot data found for fault {fault_code}",
-            )
-        ]
-
-    # Get rosbag snapshots
-    rosbag_snapshots = records.get("rosbagSnapshots") or records.get("rosbag_snapshots", [])
+    # Snapshots live in environment_data.snapshots, discriminated by `type`.
+    # The rosbagSnapshots / freezeFrameSnapshots containers under
+    # extended_data_records are never populated by the gateway, so reading them
+    # made this tool answer "no rosbag snapshots" for every fault that had them.
+    snapshots = env_data.get("snapshots") or []
+    rosbag_snapshots = [s for s in snapshots if s.get("type") == "rosbag"]
     if not rosbag_snapshots:
-        freeze_frames = records.get("freezeFrameSnapshots") or records.get(
-            "freeze_frame_snapshots", []
-        )
+        freeze_frames = [s for s in snapshots if s.get("type") == "freeze_frame"]
         if freeze_frames:
             return [
                 TextContent(
@@ -559,7 +587,10 @@ async def download_rosbags_for_fault(
     errors: list[str] = []
 
     for snap in rosbag_snapshots:
-        snap_id = snap.get("snapshotId") or snap.get("snapshot_id", "unknown")
+        # The recording's own name. There is no snapshotId on the wire, and a
+        # fault can hold several recordings, so falling back to the fault code
+        # would give every one of them the same identity in the report below.
+        snap_id = snap.get("name") or "unknown"
         bulk_uri = snap.get("bulkDataUri") or snap.get("bulk_data_uri")
 
         if not bulk_uri:

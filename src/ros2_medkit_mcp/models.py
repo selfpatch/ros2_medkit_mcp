@@ -582,6 +582,42 @@ class RosbagSnapshot(BaseModel):
     model_config = {"populate_by_name": True, "extra": "allow"}
 
 
+class GatewaySnapshot(BaseModel):
+    """One entry of ``environment_data.snapshots``, as the gateway sends it.
+
+    The gateway puts freeze frames and rosbags in a single list discriminated by
+    ``type``; it has never sent the ``freezeFrameSnapshots`` / ``rosbagSnapshots``
+    containers ExtendedDataRecords declares, so nothing read through those was
+    ever populated. A fault can carry several rosbag entries since
+    ros2_medkit#620 - one per occurrence it kept a black box for - each addressed
+    by its own ``bulk_data_uri``.
+    """
+
+    type: str = Field(..., description='"freeze_frame" or "rosbag"')
+    name: str = Field(default="", description="Snapshot name; for a rosbag, its recording id")
+    bulk_data_uri: str | None = Field(
+        default=None,
+        alias="bulkDataUri",
+        description="Path to download this recording; rosbag entries only",
+    )
+    size_bytes: int | None = Field(default=None, alias="sizeBytes", description="Recording size in bytes")
+    duration_sec: float | None = Field(default=None, alias="durationSec", description="Recorded span in seconds")
+    format: str | None = Field(default=None, description='Storage format: "mcap" or "sqlite3"')
+    data: Any | None = Field(default=None, description="Captured value; freeze-frame entries only")
+    x_medkit: dict[str, Any] | None = Field(
+        default=None,
+        alias="x-medkit",
+        description="Vendor extension; carries captured_at, topic and message_type",
+    )
+
+    @property
+    def captured_at(self) -> str | None:
+        """ISO 8601 capture time, which the gateway nests under ``x-medkit``."""
+        return (self.x_medkit or {}).get("captured_at")
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
 class ExtendedDataRecords(BaseModel):
     """Extended data records containing diagnostic snapshots."""
 
@@ -605,7 +641,11 @@ class EnvironmentData(BaseModel):
     extended_data_records: ExtendedDataRecords | None = Field(
         default=None,
         alias="extendedDataRecords",
-        description="Snapshot data including freeze frames and rosbags",
+        description="First and last occurrence timestamps",
+    )
+    snapshots: list[GatewaySnapshot] = Field(
+        default_factory=list,
+        description="Freeze frames and rosbag recordings, discriminated by type",
     )
 
     model_config = {"populate_by_name": True, "extra": "allow"}
