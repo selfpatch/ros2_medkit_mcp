@@ -266,9 +266,15 @@ def format_gateway_snapshot(snapshot: GatewaySnapshot) -> str:
 
     if snapshot.type == "rosbag":
         # The URI carries the recording id, which is what distinguishes one
-        # occurrence's black box from another's.
-        lines.append(f"    Download URI: {snapshot.bulk_data_uri}")
-        if snapshot.size_bytes:
+        # occurrence's black box from another's. A rosbag entry without one is not
+        # something a client can fetch, so say that rather than print "None".
+        if snapshot.bulk_data_uri:
+            lines.append(f"    Download URI: {snapshot.bulk_data_uri}")
+        else:
+            lines.append("    Download URI: unavailable")
+        # `is not None`, not truthiness: a zero-byte recording is a real answer and
+        # hiding its size reads as "the gateway did not report one".
+        if snapshot.size_bytes is not None:
             lines.append(f"    File Size: {snapshot.size_bytes / (1024 * 1024):.2f} MB")
         if snapshot.duration_sec is not None:
             lines.append(f"    Duration: {snapshot.duration_sec:.2f}s")
