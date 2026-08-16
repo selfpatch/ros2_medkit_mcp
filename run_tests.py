@@ -8,8 +8,9 @@ to avoid conflicts with launch_testing plugins.
 import sys
 
 # Remove ROS 2 paths before importing pytest
-sys.path = [p for p in sys.path if '/opt/ros' not in p]
+sys.path = [p for p in sys.path if "/opt/ros" not in p]
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(sys.argv[1:] or ["-v", "tests/"]))
