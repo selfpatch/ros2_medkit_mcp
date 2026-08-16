@@ -349,41 +349,82 @@ class TestFormatEnvironmentData:
     """Tests for format_environment_data function."""
 
     def test_format_with_freeze_frames(self) -> None:
-        """Test formatting environment data with freeze frames."""
-        env = EnvironmentData(
-            extended_data_records=ExtendedDataRecords(
-                freeze_frame_snapshots=[
-                    FreezeFrameSnapshot(
-                        snapshot_id="ff-1",
-                        timestamp="2025-01-01T00:00:00Z",
-                        data={"temp": 100},
-                    )
+        """A freeze frame from environment_data.snapshots, as the gateway sends it."""
+        env = EnvironmentData.model_validate(
+            {
+                "snapshots": [
+                    {
+                        "type": "freeze_frame",
+                        "name": "probe",
+                        "data": 1,
+                        "x-medkit": {
+                            "captured_at": "2026-08-15T16:05:50.034Z",
+                            "topic": "/e2e/probe",
+                            "message_type": "std_msgs/msg/Float32",
+                        },
+                    }
                 ]
-            )
+            }
         )
         output = format_environment_data(env)
         assert "Environment Data:" in output
         assert "Freeze Frame Snapshots (1):" in output
-        assert "ff-1" in output
+        assert "probe" in output
+        assert "2026-08-15T16:05:50.034Z" in output
 
-    def test_format_with_rosbags(self) -> None:
-        """Test formatting environment data with rosbags."""
-        env = EnvironmentData(
-            extended_data_records=ExtendedDataRecords(
-                rosbag_snapshots=[
-                    RosbagSnapshot(
-                        snapshot_id="rb-1",
-                        timestamp="2025-01-01T00:00:00Z",
-                        bulk_data_uri="/bulk-data/file.db3",
-                    )
+    def test_format_lists_every_recording_a_fault_kept(self) -> None:
+        """A fault holding two black boxes must surface both, each with its URI.
+
+        Since ros2_medkit#620 a fault keeps one recording per occurrence instead
+        of overwriting, and the only thing distinguishing them is the recording
+        id in the name and the URI.
+        """
+        env = EnvironmentData.model_validate(
+            {
+                "snapshots": [
+                    {
+                        "type": "rosbag",
+                        "name": "rosbag_fault_FLAP_1786809950036",
+                        "bulk_data_uri": "/apps/probe/bulk-data/rosbags/fault_FLAP_1786809950036",
+                        "size_bytes": 6225,
+                        "duration_sec": 2.48,
+                        "format": "mcap",
+                    },
+                    {
+                        "type": "rosbag",
+                        "name": "rosbag_fault_FLAP_1786809943972",
+                        "bulk_data_uri": "/apps/probe/bulk-data/rosbags/fault_FLAP_1786809943972",
+                        "size_bytes": 6231,
+                        "duration_sec": 2.49,
+                        "format": "mcap",
+                    },
                 ]
-            )
+            }
         )
         output = format_environment_data(env)
-        assert "Environment Data:" in output
-        assert "Rosbag Snapshots (1):" in output
-        assert "rb-1" in output
-        assert "/bulk-data/file.db3" in output
+        assert "Rosbag Recordings (2):" in output
+        assert "/apps/probe/bulk-data/rosbags/fault_FLAP_1786809950036" in output
+        assert "/apps/probe/bulk-data/rosbags/fault_FLAP_1786809943972" in output
+        assert "mcap" in output
+
+    def test_extended_data_records_alone_yields_no_snapshots(self) -> None:
+        """The container the gateway populates carries occurrences, not snapshots.
+
+        Reading snapshots out of extended_data_records is what made this
+        formatter render nothing at all for every fault; pin that it is not
+        where they come from.
+        """
+        env = EnvironmentData.model_validate(
+            {
+                "extended_data_records": {
+                    "first_occurrence": "2026-08-15T16:05:49.981Z",
+                    "last_occurrence": "2026-08-15T16:05:49.981Z",
+                }
+            }
+        )
+        output = format_environment_data(env)
+        assert "Rosbag" not in output
+        assert "Freeze Frame" not in output
 
 
 class TestFormatFaultResponse:
@@ -401,18 +442,15 @@ class TestFormatFaultResponse:
         response_data = {
             "item": {"code": "P0123", "faultName": "Test Fault", "severity": "critical"},
             "environmentData": {
-                "extendedDataRecords": {
-                    "freezeFrameSnapshots": [
-                        {"snapshotId": "ff-1", "timestamp": "2025-01-01T00:00:00Z", "data": {}}
-                    ],
-                    "rosbagSnapshots": [
-                        {
-                            "snapshotId": "rb-1",
-                            "timestamp": "2025-01-01T00:00:00Z",
-                            "bulkDataUri": "/bulk-data/test.db3",
-                        }
-                    ],
-                }
+                "snapshots": [
+                    {"type": "freeze_frame", "name": "probe", "data": 1},
+                    {
+                        "type": "rosbag",
+                        "name": "rosbag_fault_P0123_1786809950036",
+                        "bulk_data_uri": "/apps/probe/bulk-data/rosbags/fault_P0123_1786809950036",
+                        "format": "mcap",
+                    },
+                ]
             },
         }
         result = format_fault_response(response_data)
@@ -421,28 +459,25 @@ class TestFormatFaultResponse:
         assert "Test Fault" in text
         assert "Environment Data:" in text
         assert "Freeze Frame Snapshots" in text
-        assert "Rosbag Snapshots" in text
-        assert "/bulk-data/test.db3" in text
+        assert "Rosbag Recordings" in text
+        assert "/apps/probe/bulk-data/rosbags/fault_P0123_1786809950036" in text
 
     def test_format_response_snake_case_env_data(self) -> None:
         """Test formatting fault response with snake_case environment_data key."""
         response_data = {
             "item": {"code": "P0456"},
             "environment_data": {
-                "extendedDataRecords": {
-                    "freezeFrameSnapshots": [],
-                    "rosbagSnapshots": [
-                        {
-                            "snapshotId": "rb-1",
-                            "timestamp": "2025-01-01T00:00:00Z",
-                            "bulkDataUri": "/bulk-data/test.db3",
-                        }
-                    ],
-                }
+                "snapshots": [
+                    {
+                        "type": "rosbag",
+                        "name": "rosbag_fault_P0456_1786809950036",
+                        "bulk_data_uri": "/apps/probe/bulk-data/rosbags/fault_P0456_1786809950036",
+                    }
+                ]
             },
         }
         result = format_fault_response(response_data)
-        assert "/bulk-data/test.db3" in result[0].text
+        assert "/apps/probe/bulk-data/rosbags/fault_P0456_1786809950036" in result[0].text
 
 
 class TestFormatSnapshotsResponse:

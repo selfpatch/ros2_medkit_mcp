@@ -1,0 +1,58 @@
+{
+    "environment_data": {
+        "extended_data_records": {
+            "first_occurrence": "2026-08-15T16:05:49.981Z",
+            "last_occurrence": "2026-08-15T16:05:49.981Z"
+        },
+        "snapshots": [
+            {
+                "data": 1,
+                "name": "probe",
+                "type": "freeze_frame",
+                "x-medkit": {
+                    "captured_at": "2026-08-15T16:05:50.034Z",
+                    "full_data": {
+                        "data": 1
+                    },
+                    "message_type": "std_msgs/msg/Float32",
+                    "topic": "/e2e/probe"
+                }
+            },
+            {
+                "bulk_data_uri": "/apps/e2e_rosbag_seeder/bulk-data/rosbags/fault_E2E_FLAPPING_SENSOR_1786809950036",
+                "duration_sec": 2.481570097,
+                "format": "mcap",
+                "name": "rosbag_fault_E2E_FLAPPING_SENSOR_1786809950036",
+                "size_bytes": 6225,
+                "type": "rosbag"
+            },
+            {
+                "bulk_data_uri": "/apps/e2e_rosbag_seeder/bulk-data/rosbags/fault_E2E_FLAPPING_SENSOR_1786809943972",
+                "duration_sec": 2.4892582,
+                "format": "mcap",
+                "name": "rosbag_fault_E2E_FLAPPING_SENSOR_1786809943972",
+                "size_bytes": 6225,
+                "type": "rosbag"
+            }
+        ]
+    },
+    "item": {
+        "code": "E2E_FLAPPING_SENSOR",
+        "fault_name": "Intermittent sensor dropout seen twice",
+        "severity": 2,
+        "status": {
+            "aggregatedStatus": "active",
+            "confirmedDTC": "1",
+            "pendingDTC": "0",
+            "testFailed": "1"
+        }
+    },
+    "x-medkit": {
+        "occurrence_count": 2,
+        "reporting_sources": [
+            "/e2e_rosbag_seeder"
+        ],
+        "severity_label": "ERROR",
+        "status_raw": "CONFIRMED"
+    }
+}

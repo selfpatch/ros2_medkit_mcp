@@ -420,22 +420,24 @@ class TestDownloadRosbagsForFault:
                 "status": {"aggregatedStatus": "active"},
                 "fault_name": "Motor Overheating",
             },
+            # Snapshots come in environment_data.snapshots, discriminated by
+            # type - the shape the gateway actually sends. Two rosbag entries:
+            # one fault that came back, keeping a black box for each occurrence.
             "environment_data": {
-                "extended_data_records": {
-                    "freeze_frame_snapshots": [],
-                    "rosbag_snapshots": [
-                        {
-                            "snapshot_id": "rb-1",
-                            "timestamp": "2026-02-04T10:00:00Z",
-                            "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-1",
-                        },
-                        {
-                            "snapshot_id": "rb-2",
-                            "timestamp": "2026-02-04T10:01:00Z",
-                            "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-2",
-                        },
-                    ],
-                }
+                "snapshots": [
+                    {
+                        "type": "rosbag",
+                        "name": "rb-1",
+                        "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-1",
+                        "format": "mcap",
+                    },
+                    {
+                        "type": "rosbag",
+                        "name": "rb-2",
+                        "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-2",
+                        "format": "mcap",
+                    },
+                ]
             },
         }
 
@@ -483,12 +485,7 @@ class TestDownloadRosbagsForFault:
                 "status": {"aggregatedStatus": "active"},
             },
             "environment_data": {
-                "extended_data_records": {
-                    "freeze_frame_snapshots": [
-                        {"snapshot_id": "ff-1", "timestamp": "2026-02-04T10:00:00Z", "data": {}}
-                    ],
-                    "rosbag_snapshots": [],
-                }
+                "snapshots": [{"type": "freeze_frame", "name": "ff-1", "data": 1}]
             },
         }
 
@@ -536,21 +533,18 @@ class TestDownloadRosbagsForFault:
                 "status": {"aggregatedStatus": "active"},
             },
             "environment_data": {
-                "extended_data_records": {
-                    "freeze_frame_snapshots": [],
-                    "rosbag_snapshots": [
-                        {
-                            "snapshot_id": "rb-ok",
-                            "timestamp": "2026-02-04T10:00:00Z",
-                            "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-ok",
-                        },
-                        {
-                            "snapshot_id": "rb-fail",
-                            "timestamp": "2026-02-04T10:01:00Z",
-                            "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-fail",
-                        },
-                    ],
-                }
+                "snapshots": [
+                    {
+                        "type": "rosbag",
+                        "name": "rb-ok",
+                        "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-ok",
+                    },
+                    {
+                        "type": "rosbag",
+                        "name": "rb-fail",
+                        "bulk_data_uri": "/apps/motor/bulk-data/rosbags/rb-fail",
+                    },
+                ]
             },
         }
 
