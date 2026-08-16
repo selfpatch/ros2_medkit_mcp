@@ -54,7 +54,9 @@ def test_a_fault_that_came_back_keeps_a_recording_per_occurrence(
     gateway_response: dict[str, Any],
 ) -> None:
     """Two occurrences, two bags, each with its own id in name and URI."""
-    recordings = [s for s in gateway_response["environment_data"]["snapshots"] if s["type"] == "rosbag"]
+    recordings = [
+        s for s in gateway_response["environment_data"]["snapshots"] if s["type"] == "rosbag"
+    ]
 
     assert len(recordings) == 2
     assert len({r["bulk_data_uri"] for r in recordings}) == 2
@@ -72,7 +74,9 @@ def test_the_formatter_surfaces_both_recordings(gateway_response: dict[str, Any]
     output = format_environment_data(env)
 
     assert "Rosbag Recordings (2):" in output
-    for recording in [s for s in gateway_response["environment_data"]["snapshots"] if s["type"] == "rosbag"]:
+    for recording in [
+        s for s in gateway_response["environment_data"]["snapshots"] if s["type"] == "rosbag"
+    ]:
         assert recording["bulk_data_uri"] in output
 
 
@@ -94,5 +98,7 @@ def test_the_whole_response_formats_without_losing_the_recordings(
     text = format_fault_response(gateway_response)[0].text
 
     assert "Rosbag Recordings (2):" in text
-    for recording in [s for s in gateway_response["environment_data"]["snapshots"] if s["type"] == "rosbag"]:
+    for recording in [
+        s for s in gateway_response["environment_data"]["snapshots"] if s["type"] == "rosbag"
+    ]:
         assert recording["bulk_data_uri"] in text

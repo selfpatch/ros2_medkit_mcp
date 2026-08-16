@@ -600,8 +600,12 @@ class GatewaySnapshot(BaseModel):
         alias="bulkDataUri",
         description="Path to download this recording; rosbag entries only",
     )
-    size_bytes: int | None = Field(default=None, alias="sizeBytes", description="Recording size in bytes")
-    duration_sec: float | None = Field(default=None, alias="durationSec", description="Recorded span in seconds")
+    size_bytes: int | None = Field(
+        default=None, alias="sizeBytes", description="Recording size in bytes"
+    )
+    duration_sec: float | None = Field(
+        default=None, alias="durationSec", description="Recorded span in seconds"
+    )
     format: str | None = Field(default=None, description='Storage format: "mcap" or "sqlite3"')
     data: Any | None = Field(default=None, description="Captured value; freeze-frame entries only")
     x_medkit: dict[str, Any] | None = Field(
