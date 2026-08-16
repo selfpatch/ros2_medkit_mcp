@@ -28,7 +28,8 @@ FIXTURE = Path(__file__).parent / "fixtures" / "fault_detail_two_recordings.json
 @pytest.fixture
 def gateway_response() -> dict[str, Any]:
     """A real fault detail, straight off a gateway."""
-    return json.loads(FIXTURE.read_text())
+    # Explicit encoding: the fixture is UTF-8 regardless of the runner's locale.
+    return json.loads(FIXTURE.read_text(encoding="utf-8"))
 
 
 def test_snapshots_live_beside_extended_data_records_not_inside_them(
