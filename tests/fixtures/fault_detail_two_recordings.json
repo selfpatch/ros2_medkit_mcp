@@ -24,7 +24,10 @@
                 "format": "mcap",
                 "name": "rosbag_fault_E2E_FLAPPING_SENSOR_1786809950036",
                 "size_bytes": 6225,
-                "type": "rosbag"
+                "type": "rosbag",
+                "x-medkit": {
+                    "captured_at": "2026-08-15T16:05:50.036Z"
+                }
             },
             {
                 "bulk_data_uri": "/apps/e2e_rosbag_seeder/bulk-data/rosbags/fault_E2E_FLAPPING_SENSOR_1786809943972",
@@ -32,7 +35,10 @@
                 "format": "mcap",
                 "name": "rosbag_fault_E2E_FLAPPING_SENSOR_1786809943972",
                 "size_bytes": 6225,
-                "type": "rosbag"
+                "type": "rosbag",
+                "x-medkit": {
+                    "captured_at": "2026-08-15T16:05:43.972Z"
+                }
             }
         ]
     },

@@ -49,12 +49,11 @@ from ros2_medkit_mcp.models import (
     ExecuteScriptArgs,
     ExecuteUpdateArgs,
     ExecutionArgs,
-    ExtendedDataRecords,
     ExtendLockArgs,
     FaultGetArgs,
     FaultItem,
     FaultsListArgs,
-    FaultSnapshotsArgs,
+    FaultStatusDetail,
     FreezeFrameSnapshot,
     FunctionIdArgs,
     GatewaySnapshot,
@@ -85,7 +84,6 @@ from ros2_medkit_mcp.models import (
     SetLogConfigurationArgs,
     SubareasArgs,
     SubcomponentsArgs,
-    SystemFaultSnapshotsArgs,
     ToolResult,
     UpdateCyclicSubArgs,
     UpdateExecutionArgs,
@@ -171,12 +169,18 @@ def format_fault_item(item: FaultItem) -> str:
     lines = [f"Fault: {item.code}"]
     if item.fault_name:
         lines[0] += f" - {item.fault_name}"
-    if item.severity:
-        lines.append(f"  Severity: {item.severity}")
+    if item.severity is not None:
+        # The gateway sends a number; name it so the model does not have to
+        # guess the scale. Unknown values print as-is.
+        labels = {0: "INFO", 1: "WARNING", 2: "ERROR", 3: "CRITICAL"}
+        label = labels.get(item.severity) if isinstance(item.severity, int) else None
+        lines.append(f"  Severity: {item.severity}" + (f" ({label})" if label else ""))
     if item.status:
-        lines.append(
-            f"  Status: {item.status.value if hasattr(item.status, 'value') else item.status}"
-        )
+        if isinstance(item.status, FaultStatusDetail):
+            status_text = item.status.aggregated_status or "unknown"
+        else:
+            status_text = item.status.value if hasattr(item.status, "value") else str(item.status)
+        lines.append(f"  Status: {status_text}")
     if item.is_confirmed is not None:
         lines.append(f"  Confirmed: {item.is_confirmed}")
     if item.is_current is not None:
@@ -281,7 +285,10 @@ def format_gateway_snapshot(snapshot: GatewaySnapshot) -> str:
         if snapshot.format:
             lines.append(f"    Format: {snapshot.format}")
     elif snapshot.data is not None:
-        lines.append(f"    Data: {snapshot.data}")
+        # JSON, not Python repr: the payload is often a whole message body
+        # (Twist, Odometry), and True/None/'single quotes' would teach the
+        # model a format nothing else speaks.
+        lines.append(f"    Data: {json.dumps(snapshot.data, default=str)}")
 
     return "\n".join(lines)
 
@@ -296,6 +303,13 @@ def format_environment_data(env_data: EnvironmentData) -> str:
         Formatted string describing the environment data.
     """
     lines = ["\nEnvironment Data:"]
+
+    records = env_data.extended_data_records
+    if records and (records.first_occurrence or records.last_occurrence):
+        if records.first_occurrence:
+            lines.append(f"  First Occurrence: {records.first_occurrence}")
+        if records.last_occurrence:
+            lines.append(f"  Last Occurrence: {records.last_occurrence}")
 
     # Read from environment_data.snapshots, which is where the gateway actually
     # puts them, discriminated by `type`. The freezeFrameSnapshots /
@@ -354,41 +368,6 @@ def format_fault_response(fault_data: dict[str, Any]) -> list[TextContent]:
     x_medkit = fault_data.get("x-medkit") or item_data.get("x-medkit")
     if x_medkit:
         lines.append(f"\nROS 2 MedKit Extensions: {json.dumps(x_medkit, indent=2, default=str)}")
-
-    return [TextContent(type="text", text="\n".join(lines))]
-
-
-def format_snapshots_response(snapshots_data: dict[str, Any]) -> list[TextContent]:
-    """Format a snapshots response for LLM readability.
-
-    Args:
-        snapshots_data: Snapshots response dictionary from the API.
-
-    Returns:
-        Formatted TextContent list.
-    """
-    lines = ["Diagnostic Snapshots:"]
-
-    # Try to validate as ExtendedDataRecords
-    try:
-        records = ExtendedDataRecords.model_validate(snapshots_data)
-
-        if records.freeze_frame_snapshots:
-            lines.append(f"\nFreeze Frame Snapshots ({len(records.freeze_frame_snapshots)}):")
-            for snap in records.freeze_frame_snapshots:
-                lines.append(format_snapshot(snap))
-
-        if records.rosbag_snapshots:
-            lines.append(f"\nRosbag Snapshots ({len(records.rosbag_snapshots)}):")
-            for snap in records.rosbag_snapshots:
-                lines.append(format_snapshot(snap))
-
-        if not records.freeze_frame_snapshots and not records.rosbag_snapshots:
-            lines.append("  No snapshots available.")
-
-    except Exception:
-        # Fallback to raw JSON
-        lines.append(json.dumps(snapshots_data, indent=2, default=str))
 
     return [TextContent(type="text", text="\n".join(lines))]
 
@@ -683,8 +662,6 @@ TOOL_ALIASES: dict[str, str] = {
     "ros2_medkit_delete_all_configurations": "ros2_medkit_delete_all_configurations",
     "ros2_medkit_all_faults_list": "ros2_medkit_all_faults_list",
     "ros2_medkit_clear_all_faults": "ros2_medkit_clear_all_faults",
-    "ros2_medkit_fault_snapshots": "ros2_medkit_fault_snapshots",
-    "ros2_medkit_system_fault_snapshots": "ros2_medkit_system_fault_snapshots",
     "ros2_medkit_data_categories": "ros2_medkit_data_categories",
     "ros2_medkit_data_groups": "ros2_medkit_data_groups",
     "ros2_medkit_bulkdata_categories": "ros2_medkit_bulkdata_categories",
@@ -768,8 +745,6 @@ TOOL_ALIASES: dict[str, str] = {
     "sovd_delete_all_configurations": "ros2_medkit_delete_all_configurations",
     "sovd_all_faults_list": "ros2_medkit_all_faults_list",
     "sovd_clear_all_faults": "ros2_medkit_clear_all_faults",
-    "sovd_fault_snapshots": "ros2_medkit_fault_snapshots",
-    "sovd_system_fault_snapshots": "ros2_medkit_system_fault_snapshots",
     "sovd_data_categories": "ros2_medkit_data_categories",
     "sovd_data_groups": "ros2_medkit_data_groups",
     "sovd_bulkdata_categories": "ros2_medkit_bulkdata_categories",
@@ -1047,44 +1022,6 @@ def register_tools(
                         },
                     },
                     "required": ["entity_id"],
-                },
-            ),
-            Tool(
-                name="ros2_medkit_fault_snapshots",
-                description="Get diagnostic snapshots for a specific fault. Contains data captured at fault occurrence time.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "entity_id": {
-                            "type": "string",
-                            "description": "The entity identifier",
-                        },
-                        "fault_code": {
-                            "type": "string",
-                            "description": "The fault code",
-                        },
-                        "entity_type": {
-                            "type": "string",
-                            "enum": ["components", "apps", "areas", "functions"],
-                            "description": "Entity type",
-                            "default": "components",
-                        },
-                    },
-                    "required": ["entity_id", "fault_code"],
-                },
-            ),
-            Tool(
-                name="ros2_medkit_system_fault_snapshots",
-                description="Get system-wide diagnostic snapshots for a fault code.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "fault_code": {
-                            "type": "string",
-                            "description": "The fault code",
-                        },
-                    },
-                    "required": ["fault_code"],
                 },
             ),
             Tool(
@@ -2814,18 +2751,6 @@ def register_tools(
                 args = ClearAllFaultsArgs(**arguments)
                 result = await client.clear_all_faults(args.entity_id, args.entity_type)
                 return format_json_response(result)
-
-            elif normalized_name == "ros2_medkit_fault_snapshots":
-                args = FaultSnapshotsArgs(**arguments)
-                snapshots = await client.get_fault_snapshots(
-                    args.entity_id, args.fault_code, args.entity_type
-                )
-                return format_snapshots_response(snapshots)
-
-            elif normalized_name == "ros2_medkit_system_fault_snapshots":
-                args = SystemFaultSnapshotsArgs(**arguments)
-                snapshots = await client.get_system_fault_snapshots(args.fault_code)
-                return format_snapshots_response(snapshots)
 
             # ==================== Entity Data ====================
 
