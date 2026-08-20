@@ -4,7 +4,7 @@ These models are intentionally permissive to handle varying API responses.
 They validate input arguments while allowing flexible output from the API.
 """
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -311,32 +311,6 @@ class ClearAllFaultsArgs(BaseModel):
     )
 
 
-class FaultSnapshotsArgs(BaseModel):
-    """Arguments for getting fault snapshots."""
-
-    entity_id: str = Field(
-        ...,
-        description="The entity identifier",
-    )
-    fault_code: str = Field(
-        ...,
-        description="The fault code",
-    )
-    entity_type: str = Field(
-        default="components",
-        description="Entity type: 'components', 'apps', 'areas', or 'functions'",
-    )
-
-
-class SystemFaultSnapshotsArgs(BaseModel):
-    """Arguments for getting system-wide fault snapshots."""
-
-    fault_code: str = Field(
-        ...,
-        description="The fault code",
-    )
-
-
 # ==================== Relationship Args ====================
 
 
@@ -443,13 +417,23 @@ class SetConfigurationArgs(BaseModel):
 # ==================== Fault Response Models ====================
 
 
-class FaultStatus(str, Enum):
+class FaultStatus(StrEnum):
     """Fault status values per SOVD specification."""
 
     PENDING = "PENDING"
     ACTIVE = "ACTIVE"
     CLEARED = "CLEARED"
     INACTIVE = "INACTIVE"
+
+
+class FaultStatusDetail(BaseModel):
+    """Status object the gateway sends: aggregate word plus the DTC bits."""
+
+    aggregated_status: str | None = Field(
+        default=None, alias="aggregatedStatus", description='e.g. "active"'
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
 
 
 class FaultItem(BaseModel):
@@ -465,13 +449,15 @@ class FaultItem(BaseModel):
         alias="faultName",
         description="Human-readable fault name",
     )
-    severity: str | None = Field(
+    severity: int | str | None = Field(
         default=None,
-        description="Fault severity (e.g., 'critical', 'warning', 'info')",
+        description="Fault severity: the gateway sends a number (0=INFO..3=CRITICAL); "
+        "older payloads may carry a string label",
     )
-    status: FaultStatus | None = Field(
+    status: FaultStatus | FaultStatusDetail | None = Field(
         default=None,
-        description="Current fault status",
+        description="Current fault status: the gateway sends an object "
+        "(aggregatedStatus + DTC bits); plain SOVD payloads a bare string",
     )
     is_confirmed: bool | None = Field(
         default=None,
@@ -623,17 +609,18 @@ class GatewaySnapshot(BaseModel):
 
 
 class ExtendedDataRecords(BaseModel):
-    """Extended data records containing diagnostic snapshots."""
+    """Occurrence timestamps of the fault, as the gateway sends them.
 
-    freeze_frame_snapshots: list[FreezeFrameSnapshot] = Field(
-        default_factory=list,
-        alias="freezeFrameSnapshots",
-        description="List of freeze frame snapshots with captured data",
+    This container has never carried snapshots on the wire - those live in
+    ``environment_data.snapshots`` - so the old ``freezeFrameSnapshots`` /
+    ``rosbagSnapshots`` lists described data no reader could ever get.
+    """
+
+    first_occurrence: str | None = Field(
+        default=None, description="ISO 8601 time the fault first confirmed"
     )
-    rosbag_snapshots: list[RosbagSnapshot] = Field(
-        default_factory=list,
-        alias="rosbagSnapshots",
-        description="List of rosbag snapshots with download URIs",
+    last_occurrence: str | None = Field(
+        default=None, description="ISO 8601 time of the newest occurrence"
     )
 
     model_config = {"populate_by_name": True, "extra": "allow"}

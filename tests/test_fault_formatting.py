@@ -8,11 +8,9 @@ from ros2_medkit_mcp.mcp_app import (
     format_fault_list,
     format_fault_response,
     format_snapshot,
-    format_snapshots_response,
 )
 from ros2_medkit_mcp.models import (
     EnvironmentData,
-    ExtendedDataRecords,
     FaultItem,
     FaultResponse,
     FaultStatus,
@@ -125,54 +123,6 @@ class TestSnapshotModels:
         assert snap.is_available is False
 
 
-class TestExtendedDataRecords:
-    """Tests for ExtendedDataRecords model."""
-
-    def test_empty_records(self) -> None:
-        """Test ExtendedDataRecords with empty lists."""
-        records = ExtendedDataRecords()
-        assert records.freeze_frame_snapshots == []
-        assert records.rosbag_snapshots == []
-
-    def test_records_with_snapshots(self) -> None:
-        """Test ExtendedDataRecords with both snapshot types."""
-        freeze = FreezeFrameSnapshot(
-            snapshot_id="ff-1",
-            timestamp="2025-01-01T00:00:00Z",
-            data={"key": "value"},
-        )
-        rosbag = RosbagSnapshot(
-            snapshot_id="rb-1",
-            timestamp="2025-01-01T00:00:00Z",
-            bulk_data_uri="/bulk-data/file.db3",
-        )
-        records = ExtendedDataRecords(
-            freeze_frame_snapshots=[freeze],
-            rosbag_snapshots=[rosbag],
-        )
-        assert len(records.freeze_frame_snapshots) == 1
-        assert len(records.rosbag_snapshots) == 1
-
-    def test_records_from_api(self) -> None:
-        """Test ExtendedDataRecords from API response."""
-        api_data = {
-            "freezeFrameSnapshots": [
-                {"snapshotId": "ff-1", "timestamp": "2025-01-01T00:00:00Z", "data": {}}
-            ],
-            "rosbagSnapshots": [
-                {
-                    "snapshotId": "rb-1",
-                    "timestamp": "2025-01-01T00:00:00Z",
-                    "bulkDataUri": "/bulk-data/test.db3",
-                }
-            ],
-        }
-        records = ExtendedDataRecords.model_validate(api_data)
-        assert len(records.freeze_frame_snapshots) == 1
-        assert len(records.rosbag_snapshots) == 1
-        assert records.rosbag_snapshots[0].bulk_data_uri == "/bulk-data/test.db3"
-
-
 class TestEnvironmentData:
     """Tests for EnvironmentData model."""
 
@@ -181,34 +131,19 @@ class TestEnvironmentData:
         env = EnvironmentData()
         assert env.extended_data_records is None
 
-    def test_environment_data_with_records(self) -> None:
-        """Test EnvironmentData with ExtendedDataRecords."""
-        records = ExtendedDataRecords(
-            freeze_frame_snapshots=[
-                FreezeFrameSnapshot(
-                    snapshot_id="ff-1",
-                    timestamp="2025-01-01T00:00:00Z",
-                    data={"sensor": "value"},
-                )
-            ]
-        )
-        env = EnvironmentData(extended_data_records=records)
-        assert env.extended_data_records is not None
-        assert len(env.extended_data_records.freeze_frame_snapshots) == 1
-
-    def test_environment_from_api(self) -> None:
-        """Test EnvironmentData from API response."""
-        api_data = {
-            "extendedDataRecords": {
-                "freezeFrameSnapshots": [
-                    {"snapshotId": "ff-1", "timestamp": "2025-01-01T00:00:00Z", "data": {}}
-                ],
-                "rosbagSnapshots": [],
+    def test_occurrence_timestamps_from_api(self) -> None:
+        """The container carries occurrence times, in the snake_case the gateway sends."""
+        env = EnvironmentData.model_validate(
+            {
+                "extended_data_records": {
+                    "first_occurrence": "2026-08-15T16:05:49.981Z",
+                    "last_occurrence": "2026-08-16T02:14:00.000Z",
+                }
             }
-        }
-        env = EnvironmentData.model_validate(api_data)
+        )
         assert env.extended_data_records is not None
-        assert len(env.extended_data_records.freeze_frame_snapshots) == 1
+        assert env.extended_data_records.first_occurrence == "2026-08-15T16:05:49.981Z"
+        assert env.extended_data_records.last_occurrence == "2026-08-16T02:14:00.000Z"
 
 
 class TestFaultResponse:
@@ -224,21 +159,17 @@ class TestFaultResponse:
     def test_fault_response_with_env_data(self) -> None:
         """Test FaultResponse with environment data."""
         item = FaultItem(code="P0123", fault_name="Test Fault")
-        env = EnvironmentData(
-            extended_data_records=ExtendedDataRecords(
-                rosbag_snapshots=[
-                    RosbagSnapshot(
-                        snapshot_id="rb-1",
-                        timestamp="2025-01-01T00:00:00Z",
-                        bulk_data_uri="/bulk-data/test.db3",
-                    )
+        env = EnvironmentData.model_validate(
+            {
+                "snapshots": [
+                    {"type": "rosbag", "name": "rb-1", "bulk_data_uri": "/bulk-data/test.db3"}
                 ]
-            )
+            }
         )
         response = FaultResponse(item=item, environment_data=env)
         assert response.item.code == "P0123"
         assert response.environment_data is not None
-        assert len(response.environment_data.extended_data_records.rosbag_snapshots) == 1
+        assert response.environment_data.snapshots[0].bulk_data_uri == "/bulk-data/test.db3"
 
 
 class TestFormatFaultItem:
@@ -478,39 +409,3 @@ class TestFormatFaultResponse:
         }
         result = format_fault_response(response_data)
         assert "/apps/probe/bulk-data/rosbags/fault_P0456_1786809950036" in result[0].text
-
-
-class TestFormatSnapshotsResponse:
-    """Tests for format_snapshots_response function."""
-
-    def test_format_empty_snapshots(self) -> None:
-        """Test formatting response with no snapshots."""
-        response_data = {"freezeFrameSnapshots": [], "rosbagSnapshots": []}
-        result = format_snapshots_response(response_data)
-        assert "Diagnostic Snapshots:" in result[0].text
-        assert "No snapshots available" in result[0].text
-
-    def test_format_with_snapshots(self) -> None:
-        """Test formatting response with both snapshot types."""
-        response_data = {
-            "freezeFrameSnapshots": [
-                {"snapshotId": "ff-1", "timestamp": "2025-01-01T00:00:00Z", "data": {"val": 1}}
-            ],
-            "rosbagSnapshots": [
-                {
-                    "snapshotId": "rb-1",
-                    "timestamp": "2025-01-01T00:00:00Z",
-                    "bulkDataUri": "/bulk-data/test.db3",
-                    "fileSize": 2097152,
-                }
-            ],
-        }
-        result = format_snapshots_response(response_data)
-        text = result[0].text
-        assert "Diagnostic Snapshots:" in text
-        assert "Freeze Frame Snapshots (1):" in text
-        assert "Rosbag Snapshots (1):" in text
-        assert "ff-1" in text
-        assert "rb-1" in text
-        assert "/bulk-data/test.db3" in text
-        assert "2.00 MB" in text

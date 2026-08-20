@@ -814,18 +814,6 @@ class SovdClient:
             return await self._raw_get_items("/faults", params)
         return _extract_items(await self._call(faults.list_all_faults.asyncio))
 
-    async def get_fault_snapshots(
-        self, entity_id: str, fault_code: str, entity_type: str = "components"
-    ) -> dict[str, Any]:
-        return await self._raw_request(
-            "GET",
-            f"/{quote(entity_type, safe='')}/{quote(entity_id, safe='')}"
-            f"/faults/{quote(fault_code, safe='')}/snapshots",
-        )
-
-    async def get_system_fault_snapshots(self, fault_code: str) -> dict[str, Any]:
-        return await self._raw_request("GET", f"/faults/{quote(fault_code, safe='')}/snapshots")
-
     # ==================== Data ====================
 
     async def get_component_data(
