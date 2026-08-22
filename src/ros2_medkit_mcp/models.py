@@ -4,7 +4,7 @@ These models are intentionally permissive to handle varying API responses.
 They validate input arguments while allowing flexible output from the API.
 """
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -443,7 +443,7 @@ class SetConfigurationArgs(BaseModel):
 # ==================== Fault Response Models ====================
 
 
-class FaultStatus(str, Enum):
+class FaultStatus(StrEnum):
     """Fault status values per SOVD specification."""
 
     PENDING = "PENDING"
@@ -1193,7 +1193,7 @@ class AutomateUpdateArgs(BaseModel):
 # ==================== Lifecycle Argument Models ====================
 
 
-class LifecycleEntityType(str, Enum):
+class LifecycleEntityType(StrEnum):
     """Entity types that support the lifecycle status API.
 
     The gateway exposes lifecycle only for apps and components (not areas
@@ -1204,7 +1204,7 @@ class LifecycleEntityType(str, Enum):
     COMPONENTS = "components"
 
 
-class LifecycleAction(str, Enum):
+class LifecycleAction(StrEnum):
     """Lifecycle transition actions (hyphenated SOVD action names)."""
 
     START = "start"
