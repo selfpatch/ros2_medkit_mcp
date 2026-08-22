@@ -558,51 +558,66 @@ class TestLifecycleTools:
             await client.get_status("areas", "powertrain")
         await client.close()
 
+    # Every entity_type x action pair the client can route, so a wrong entry in
+    # _ENTITY_FUNC_MAP shows up as a request to the wrong URL rather than passing
+    # because a sibling action happens to be mapped correctly.
+    @pytest.mark.parametrize("entity_type,entity_id", [("apps", "motor"), ("components", "ecu")])
+    @pytest.mark.parametrize(
+        "action",
+        ["start", "restart", "force-restart", "shutdown", "force-shutdown"],
+    )
     @respx.mock
-    async def test_set_status_start_apps(self, client: SovdClient) -> None:
-        respx.put("http://test-sovd:8080/api/v1/apps/motor/status/start").mock(
-            return_value=httpx.Response(202)
-        )
-        result = await client.set_status("apps", "motor", "start")
+    async def test_set_status_routes_every_action(
+        self, client: SovdClient, entity_type: str, entity_id: str, action: str
+    ) -> None:
+        # The action segment stays hyphenated on the wire even though the generated
+        # module name uses an underscore (put_apps_status_force_restart).
+        route = respx.put(
+            f"http://test-sovd:8080/api/v1/{entity_type}/{entity_id}/status/{action}"
+        ).mock(return_value=httpx.Response(202))
+        result = await client.set_status(entity_type, entity_id, action)
         assert result == {}
+        assert route.called
         await client.close()
 
+    @pytest.mark.parametrize("entity_type,entity_id", [("apps", "motor"), ("components", "ecu")])
     @respx.mock
-    async def test_set_status_restart_components(self, client: SovdClient) -> None:
-        respx.put("http://test-sovd:8080/api/v1/components/ecu/status/restart").mock(
-            return_value=httpx.Response(202)
+    async def test_get_status_routes_every_entity_type(
+        self, client: SovdClient, entity_type: str, entity_id: str
+    ) -> None:
+        route = respx.get(f"http://test-sovd:8080/api/v1/{entity_type}/{entity_id}/status").mock(
+            return_value=httpx.Response(200, json={"status": "ready"})
         )
-        result = await client.set_status("components", "ecu", "restart")
-        assert result == {}
+        result = await client.get_status(entity_type, entity_id)
+        assert result["status"] == "ready"
+        assert route.called
         await client.close()
 
+    @pytest.mark.parametrize(
+        "action",
+        ["start", "restart", "force-restart", "shutdown", "force-shutdown"],
+    )
     @respx.mock
-    async def test_set_status_force_restart_apps(self, client: SovdClient) -> None:
-        # The action enum uses a hyphen at the API level (force-restart) but the
-        # generated module name uses an underscore (put_apps_status_force_restart).
-        respx.put("http://test-sovd:8080/api/v1/apps/motor/status/force-restart").mock(
-            return_value=httpx.Response(202)
+    async def test_set_status_surfaces_missing_lifecycle_provider(
+        self, client: SovdClient, action: str
+    ) -> None:
+        # A gateway with no LifecycleProvider plugin answers every transition with
+        # 501, a status the generated parser does not enumerate. Keying success off
+        # a None parsed body would render that as an empty success object, so a
+        # destructive call would report as accepted while nothing happened.
+        respx.put(f"http://test-sovd:8080/api/v1/apps/motor/status/{action}").mock(
+            return_value=httpx.Response(
+                501,
+                json={
+                    "error_code": "not-implemented",
+                    "message": "Lifecycle control not available for this entity",
+                },
+            )
         )
-        result = await client.set_status("apps", "motor", "force-restart")
-        assert result == {}
-        await client.close()
-
-    @respx.mock
-    async def test_set_status_shutdown_components(self, client: SovdClient) -> None:
-        respx.put("http://test-sovd:8080/api/v1/components/ecu/status/shutdown").mock(
-            return_value=httpx.Response(202)
-        )
-        result = await client.set_status("components", "ecu", "shutdown")
-        assert result == {}
-        await client.close()
-
-    @respx.mock
-    async def test_set_status_force_shutdown_apps(self, client: SovdClient) -> None:
-        respx.put("http://test-sovd:8080/api/v1/apps/motor/status/force-shutdown").mock(
-            return_value=httpx.Response(202)
-        )
-        result = await client.set_status("apps", "motor", "force-shutdown")
-        assert result == {}
+        with pytest.raises(SovdClientError) as excinfo:
+            await client.set_status("apps", "motor", action)
+        assert excinfo.value.status_code == 501
+        assert "not-implemented" in str(excinfo.value)
         await client.close()
 
     async def test_set_status_invalid_entity_type(self, client: SovdClient) -> None:
@@ -616,7 +631,7 @@ class TestLifecycleTools:
         await client.close()
 
     @respx.mock
-    async def test_get_status_dispatch_smoke(self, client: SovdClient) -> None:
+    async def test_get_status_renders_as_json(self, client: SovdClient) -> None:
         respx.get("http://test-sovd:8080/api/v1/apps/motor/status").mock(
             return_value=httpx.Response(200, json=self.STATUS_RESPONSE)
         )

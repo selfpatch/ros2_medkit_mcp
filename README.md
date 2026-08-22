@@ -386,6 +386,11 @@ Reset all configurations (parameters) to their default values.
 
 Lifecycle status is only available for apps and components (not areas or functions).
 
+Reading the status works on any gateway. Triggering a transition requires the gateway
+to have a `LifecycleProvider` plugin registered for the entity; there is no built-in
+provider, so on a stock gateway every `status_set` call fails with
+`501 [not-implemented] Lifecycle control not available for this entity`.
+
 #### `ros2_medkit_status_get`
 Get the lifecycle status of an app or component (e.g. `ready` / `notReady`).
 
@@ -396,14 +401,14 @@ Get the lifecycle status of an app or component (e.g. `ready` / `notReady`).
 **Returns:** Response from `GET /{entity_type}/{entity_id}/status`
 
 #### `ros2_medkit_status_set`
-Trigger a lifecycle transition on an app or component. **Warning:** `shutdown`, `force-shutdown`, `restart`, and `force-restart` affect the running node or host process.
+Trigger a lifecycle transition on an app or component via `PUT /{entity_type}/{entity_id}/status/{action}`. Requires a gateway-side `LifecycleProvider` plugin for the entity. **Warning:** `shutdown`, `force-shutdown`, `restart`, and `force-restart` affect the running node or host process.
 
 **Arguments:**
 - `entity_type` (required, string): `apps` or `components`
 - `entity_id` (required, string): The entity identifier
 - `action` (required, string): one of `start`, `restart`, `force-restart`, `shutdown`, `force-shutdown`
 
-**Returns:** `202 Accepted` from `PUT /{entity_type}/{entity_id}/status/{action}` (no body)
+**Returns:** `{}` - the gateway accepts the transition with a body-less `202`, which the tool renders as an empty JSON object. Without a `LifecycleProvider` plugin the call returns the gateway error instead: `[not-implemented] Lifecycle control not available for this entity`.
 
 ## MCP Resources
 

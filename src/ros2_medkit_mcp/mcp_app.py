@@ -2636,7 +2636,12 @@ def register_tools(
                     "Trigger a lifecycle transition on an app or component."
                     " WARNING: shutdown/force-shutdown/restart/force-restart"
                     " affect the running node or host process. Lifecycle is only"
-                    " available for apps and components."
+                    " available for apps and components. Requires a gateway-side"
+                    " LifecycleProvider plugin for the entity; there is no"
+                    " built-in provider, so a stock gateway answers every"
+                    " transition with 'not-implemented' while status_get still"
+                    " works. On success the gateway returns a body-less 202 and"
+                    " this tool returns an empty JSON object."
                 ),
                 inputSchema={
                     "type": "object",
