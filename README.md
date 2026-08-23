@@ -14,7 +14,7 @@ This server does **not** implement SOVD itself. It provides MCP tools that call 
 
 ## Features
 
-- **Full ros2_medkit gateway coverage**: Discovery, component data, operations (services/actions), and configurations (ROS 2 parameters)
+- **Full ros2_medkit gateway coverage**: Discovery, component data, operations (services/actions), configurations (ROS 2 parameters), and entity lifecycle status (apps/components)
 - **Dual transport support**: stdio and streamable-http
 - **Async HTTP client** using httpx
 - **Pydantic validation** for configuration and models
@@ -381,6 +381,38 @@ Reset all configurations (parameters) to their default values.
 - `component_id` (required, string): The component identifier
 
 **Returns:** Response from `DELETE /components/{component_id}/configurations`
+
+### Lifecycle Tools
+
+Lifecycle status is only available for apps and components (not areas or functions).
+
+Reading the status needs no plugin - the gateway derives it from the ROS 2 graph and,
+for managed lifecycle nodes, from their reported state. Triggering a transition does need
+one: the gateway routes it to a `LifecycleProvider` plugin registered for that entity, and
+no provider ships with the gateway. A transition on a local app or component of a gateway
+with no provider therefore gets HTTP `501` from the gateway, which this server surfaces as
+`[not-implemented] Lifecycle control not available for this entity`. An aggregating
+gateway forwards requests for remote entities to the peer that owns them, so a peer that
+does have a provider answers normally.
+
+#### `ros2_medkit_status_get`
+Get the lifecycle status of an app or component (e.g. `ready` / `notReady`).
+
+**Arguments:**
+- `entity_type` (required, string): `apps` or `components`
+- `entity_id` (required, string): The entity identifier
+
+**Returns:** Response from `GET /{entity_type}/{entity_id}/status`
+
+#### `ros2_medkit_status_set`
+Trigger a lifecycle transition on an app or component via `PUT /{entity_type}/{entity_id}/status/{action}`. Requires a gateway-side `LifecycleProvider` plugin for the entity. **Warning:** `shutdown`, `force-shutdown`, `restart`, and `force-restart` affect the running node or host process.
+
+**Arguments:**
+- `entity_type` (required, string): `apps` or `components`
+- `entity_id` (required, string): The entity identifier
+- `action` (required, string): one of `start`, `restart`, `force-restart`, `shutdown`, `force-shutdown`
+
+**Returns:** `{}` - the gateway accepts the transition with a body-less `202`, which the tool renders as an empty JSON object. With no provider registered for the entity the call returns the gateway error instead: `[not-implemented] Lifecycle control not available for this entity`.
 
 ## MCP Resources
 

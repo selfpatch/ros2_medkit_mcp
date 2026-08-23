@@ -15,6 +15,7 @@ import re
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from contextvars import ContextVar
 from typing import Any
 from urllib.parse import quote
 
@@ -26,6 +27,7 @@ from ros2_medkit_client.api import (
     data,
     discovery,
     faults,
+    lifecycle,
     locking,
     logs,
     operations,
@@ -100,6 +102,19 @@ def _fault_query_params(
     if include_clusters:
         params["include_clusters"] = "true"
     return params
+
+
+# Status of the most recent generated-client response on this task. The generated
+# parsers build their error models inside the API function, so a documented error
+# status (400/404/500) carrying a non-JSON body - a proxy error page, say - raises
+# out of the call before the caller ever sees the response. This is how the status
+# survives that. A ContextVar rather than an attribute so concurrent tool calls do
+# not read each other's status.
+_last_response_status: ContextVar[int | None] = ContextVar("_last_response_status", default=None)
+
+
+async def _record_response_status(response: httpx.Response) -> None:
+    _last_response_status.set(response.status_code)
 
 
 def _error_from_content(status_code: int, content: bytes) -> str:
@@ -457,7 +472,42 @@ _ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
             "functions": subscriptions.delete_function_subscription,
         },
     },
+    # Lifecycle is exposed only for apps and components (no areas/functions).
+    # Action keys use the hyphenated SOVD action names (force-restart,
+    # force-shutdown); the generated modules use underscores.
+    "lifecycle": {
+        "get": {
+            "components": lifecycle.get_components_status,
+            "apps": lifecycle.get_apps_status,
+        },
+        "start": {
+            "components": lifecycle.put_components_status_start,
+            "apps": lifecycle.put_apps_status_start,
+        },
+        "restart": {
+            "components": lifecycle.put_components_status_restart,
+            "apps": lifecycle.put_apps_status_restart,
+        },
+        "force-restart": {
+            "components": lifecycle.put_components_status_force_restart,
+            "apps": lifecycle.put_apps_status_force_restart,
+        },
+        "shutdown": {
+            "components": lifecycle.put_components_status_shutdown,
+            "apps": lifecycle.put_apps_status_shutdown,
+        },
+        "force-shutdown": {
+            "components": lifecycle.put_components_status_force_shutdown,
+            "apps": lifecycle.put_apps_status_force_shutdown,
+        },
+    },
 }
+
+# Lifecycle is exposed only for apps and components.
+_LIFECYCLE_ENTITY_TYPES = frozenset({"apps", "components"})
+
+# Valid lifecycle transition actions (hyphenated SOVD action names).
+_LIFECYCLE_ACTIONS = frozenset({"start", "restart", "force-restart", "shutdown", "force-shutdown"})
 
 
 # Validate all function references at import time
@@ -515,6 +565,8 @@ class SovdClient:
                 )
                 await self._medkit.__aenter__()
                 self._entered = True
+                hooks = self._medkit.http.get_async_httpx_client().event_hooks
+                hooks.setdefault("response", []).append(_record_response_status)
         return self._medkit
 
     async def _httpx_client(self) -> httpx.AsyncClient:
@@ -564,15 +616,20 @@ class SovdClient:
         success off `parsed is None` would report success on those errors - a
         silent false-success on destructive operations. Uses the ``_detailed``
         variant so the real status code is available; only 2xx is success.
+
+        A redirect counts as a failure, not a success: no endpoint documents a
+        3xx, redirects are not followed, and a proxy in front of the gateway
+        answering a destructive PUT with a 302 must not read as accepted.
         """
         if "body" in kwargs and isinstance(kwargs["body"], dict):
             kwargs["body"] = _wrap_body_dict(api_func, kwargs["body"])
         client = await self._ensure_client()
         detailed = sys.modules[api_func.__module__].asyncio_detailed
+        _last_response_status.set(None)
         try:
             response = await detailed(client=client.http, **kwargs)
             status = int(response.status_code)
-            if status >= 400:
+            if not 200 <= status < 300:
                 raise SovdClientError(
                     message=_error_from_content(status, response.content),
                     status_code=status,
@@ -585,6 +642,12 @@ class SovdClient:
         except httpx.RequestError as e:
             raise SovdClientError(message=f"Request failed: {e}") from e
         except (ValueError, KeyError) as e:
+            recorded = _last_response_status.get()
+            if recorded is not None and not 200 <= recorded < 300:
+                raise SovdClientError(
+                    message=(f"Gateway returned HTTP {recorded}: response body was not valid JSON"),
+                    status_code=recorded,
+                ) from e
             raise SovdClientError(message=f"Failed to parse response: {e}") from e
 
     async def _raw_request(self, method: str, path: str) -> Any:
@@ -1427,6 +1490,48 @@ class SovdClient:
 
     async def delete_update(self, update_id: str) -> dict[str, Any]:
         return await self._call_void(updates.delete_update.asyncio, update_id=update_id)
+
+    # ==================== Lifecycle ====================
+
+    async def get_status(self, entity_type: str, entity_id: str) -> dict[str, Any]:
+        """Get the lifecycle status of an app or component.
+
+        Lifecycle is exposed only for ``apps`` and ``components``; any other
+        entity_type raises SovdClientError.
+        """
+        if entity_type not in _LIFECYCLE_ENTITY_TYPES:
+            raise SovdClientError(
+                message=(
+                    f"Lifecycle status is only available for apps and components, "
+                    f"not '{entity_type}'"
+                )
+            )
+        fn = _entity_func("lifecycle", "get", entity_type)
+        return await self._call(fn, **{_entity_id_kwarg(entity_type): entity_id})
+
+    async def set_status(self, entity_type: str, entity_id: str, action: str) -> dict[str, Any]:
+        """Trigger a lifecycle transition on an app or component.
+
+        ``action`` is one of start, restart, force-restart, shutdown,
+        force-shutdown. The transition PUTs are body-less and return 202.
+        Lifecycle is exposed only for ``apps`` and ``components``.
+        """
+        if entity_type not in _LIFECYCLE_ENTITY_TYPES:
+            raise SovdClientError(
+                message=(
+                    f"Lifecycle transitions are only available for apps and "
+                    f"components, not '{entity_type}'"
+                )
+            )
+        if action not in _LIFECYCLE_ACTIONS:
+            raise SovdClientError(
+                message=(
+                    f"Unknown lifecycle action '{action}'; expected one of "
+                    f"{', '.join(sorted(_LIFECYCLE_ACTIONS))}"
+                )
+            )
+        fn = _entity_func("lifecycle", action, entity_type)
+        return await self._call_void(fn, **{_entity_id_kwarg(entity_type): entity_id})
 
 
 @asynccontextmanager

@@ -1,17 +1,36 @@
 """Tests for MCP app call_tool dispatcher."""
 
+import json
+
 import httpx
 import pytest
 import respx
-from mcp.types import TextContent
+from mcp.server import Server
+from mcp.types import (
+    CallToolRequest,
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsRequest,
+    TextContent,
+)
+from pydantic import ValidationError
 
 from ros2_medkit_mcp.client import SovdClient, SovdClientError
 from ros2_medkit_mcp.config import Settings
-from ros2_medkit_mcp.mcp_app import TOOL_ALIASES, format_error, format_json_response
+from ros2_medkit_mcp.mcp_app import (
+    TOOL_ALIASES,
+    format_error,
+    format_json_response,
+    register_tools,
+)
 from ros2_medkit_mcp.models import (
     EntitiesListArgs,
     FaultsListArgs,
+    LifecycleAction,
+    LifecycleEntityType,
     ListOperationsArgs,
+    StatusGetArgs,
+    StatusSetArgs,
     filter_entities,
 )
 
@@ -50,6 +69,13 @@ class TestToolAliases:
         """Test legacy sovd_* aliases resolve to ros2_medkit_* canonical names."""
         assert TOOL_ALIASES.get("sovd_version") == "ros2_medkit_version"
         assert TOOL_ALIASES.get("sovd_entities_list") == "ros2_medkit_entities_list"
+
+    def test_lifecycle_aliases(self) -> None:
+        """Test lifecycle status tool aliases resolve to canonical names."""
+        assert TOOL_ALIASES.get("ros2_medkit_status_get") == "ros2_medkit_status_get"
+        assert TOOL_ALIASES.get("ros2_medkit_status_set") == "ros2_medkit_status_set"
+        assert TOOL_ALIASES.get("sovd_status_get") == "ros2_medkit_status_get"
+        assert TOOL_ALIASES.get("sovd_status_set") == "ros2_medkit_status_set"
 
 
 class TestFormatFunctions:
@@ -303,3 +329,187 @@ class TestArgumentModels:
 
         args_with_filter = EntitiesListArgs(filter="test")
         assert args_with_filter.filter == "test"
+
+    def test_status_get_args_valid(self) -> None:
+        """Test StatusGetArgs accepts apps and components entity types."""
+        args = StatusGetArgs(entity_type="apps", entity_id="motor")
+        assert args.entity_type is LifecycleEntityType.APPS
+        assert args.entity_id == "motor"
+
+        args = StatusGetArgs(entity_type="components", entity_id="ecu")
+        assert args.entity_type is LifecycleEntityType.COMPONENTS
+
+    def test_status_get_args_rejects_invalid_entity_type(self) -> None:
+        """Test StatusGetArgs rejects entity types without lifecycle support."""
+        with pytest.raises(ValidationError):
+            StatusGetArgs(entity_type="areas", entity_id="powertrain")
+
+    def test_status_set_args_valid_actions(self) -> None:
+        """Test StatusSetArgs accepts all five lifecycle transitions."""
+        for action, expected in (
+            ("start", LifecycleAction.START),
+            ("restart", LifecycleAction.RESTART),
+            ("force-restart", LifecycleAction.FORCE_RESTART),
+            ("shutdown", LifecycleAction.SHUTDOWN),
+            ("force-shutdown", LifecycleAction.FORCE_SHUTDOWN),
+        ):
+            args = StatusSetArgs(entity_type="apps", entity_id="motor", action=action)
+            assert args.action is expected
+
+    def test_status_set_args_rejects_invalid_action(self) -> None:
+        """Test StatusSetArgs rejects unknown actions."""
+        with pytest.raises(ValidationError):
+            StatusSetArgs(entity_type="apps", entity_id="motor", action="bogus")
+
+
+async def _call_registered_tool(
+    client: SovdClient, name: str, arguments: dict[str, object]
+) -> CallToolResult:
+    """Dispatch a tool through the registered MCP handler and return the full result.
+
+    The whole result is returned, not just its text, so callers can assert on
+    isError: an error the handler renders as a JSON envelope still reaches the
+    model as a non-error tool result, and a test that reads only the text cannot
+    tell the two apart.
+    """
+    server: Server = Server("test")
+    register_tools(server, client)
+    request = CallToolRequest(
+        method="tools/call",
+        params=CallToolRequestParams(name=name, arguments=arguments),
+    )
+    result = await server.request_handlers[CallToolRequest](request)
+    return result.root
+
+
+def _tool_text(result: CallToolResult) -> str:
+    content = result.content[0]
+    assert isinstance(content, TextContent)
+    return content.text
+
+
+class TestLifecycleToolDispatch:
+    """Tests that drive the registered MCP handlers, not the client directly.
+
+    The client-level tests cannot see the tool registry or the dispatch chain in
+    call_tool, so a tool that is never registered - or whose dispatch branch names
+    the wrong client method - passes all of them.
+    """
+
+    async def test_lifecycle_tools_are_registered(self, client: SovdClient) -> None:
+        server: Server = Server("test")
+        register_tools(server, client)
+        listed = await server.request_handlers[ListToolsRequest](
+            ListToolsRequest(method="tools/list")
+        )
+        tools = {tool.name: tool for tool in listed.root.tools}
+
+        assert "ros2_medkit_status_get" in tools
+        assert "ros2_medkit_status_set" in tools
+        assert tools["ros2_medkit_status_get"].inputSchema["required"] == [
+            "entity_type",
+            "entity_id",
+        ]
+        for tool_name in ("ros2_medkit_status_get", "ros2_medkit_status_set"):
+            schema = tools[tool_name].inputSchema
+            assert schema["properties"]["entity_type"]["enum"] == ["apps", "components"]
+            assert schema["properties"]["entity_id"]["type"] == "string"
+        assert tools["ros2_medkit_status_set"].inputSchema["properties"]["action"]["enum"] == [
+            "start",
+            "restart",
+            "force-restart",
+            "shutdown",
+            "force-shutdown",
+        ]
+        assert tools["ros2_medkit_status_set"].inputSchema["required"] == [
+            "entity_type",
+            "entity_id",
+            "action",
+        ]
+        await client.close()
+
+    async def test_status_set_description_mentions_provider_requirement(
+        self, client: SovdClient
+    ) -> None:
+        # A stock gateway rejects every transition, so the model needs to read that
+        # off the tool description rather than infer it from a failed call.
+        server: Server = Server("test")
+        register_tools(server, client)
+        listed = await server.request_handlers[ListToolsRequest](
+            ListToolsRequest(method="tools/list")
+        )
+        description = next(
+            tool.description or ""
+            for tool in listed.root.tools
+            if tool.name == "ros2_medkit_status_set"
+        )
+        assert "Requires a gateway-side LifecycleProvider plugin for the entity" in description
+        assert "there is no built-in provider" in description
+        assert "not-implemented" in description
+        assert "status_get still" in description
+        await client.close()
+
+    @respx.mock
+    async def test_status_get_dispatch(self, client: SovdClient) -> None:
+        respx.get("http://test-sovd:8080/api/v1/apps/motor/status").mock(
+            return_value=httpx.Response(200, json={"status": "ready"})
+        )
+        result = await _call_registered_tool(
+            client, "ros2_medkit_status_get", {"entity_type": "apps", "entity_id": "motor"}
+        )
+        assert result.isError is False
+        assert json.loads(_tool_text(result)) == {"status": "ready"}
+        await client.close()
+
+    @respx.mock
+    async def test_status_set_dispatch(self, client: SovdClient) -> None:
+        route = respx.put("http://test-sovd:8080/api/v1/apps/motor/status/restart").mock(
+            return_value=httpx.Response(202)
+        )
+        result = await _call_registered_tool(
+            client,
+            "ros2_medkit_status_set",
+            {"entity_type": "apps", "entity_id": "motor", "action": "restart"},
+        )
+        assert route.call_count == 1
+        assert route.calls.last.request.read() == b""
+        assert result.isError is False
+        assert json.loads(_tool_text(result)) == {}
+        await client.close()
+
+    @respx.mock
+    async def test_status_set_dispatch_reports_missing_provider(self, client: SovdClient) -> None:
+        respx.put("http://test-sovd:8080/api/v1/apps/motor/status/shutdown").mock(
+            return_value=httpx.Response(
+                501,
+                json={
+                    "error_code": "not-implemented",
+                    "message": "Lifecycle control not available for this entity",
+                },
+            )
+        )
+        result = await _call_registered_tool(
+            client,
+            "ros2_medkit_status_set",
+            {"entity_type": "apps", "entity_id": "motor", "action": "shutdown"},
+        )
+        assert json.loads(_tool_text(result)) == {
+            "success": False,
+            "data": None,
+            "error": "[not-implemented] Lifecycle control not available for this entity",
+        }
+        await client.close()
+
+    @respx.mock
+    async def test_sovd_alias_dispatches_to_canonical_tool(self, client: SovdClient) -> None:
+        route = respx.put("http://test-sovd:8080/api/v1/components/ecu/status/start").mock(
+            return_value=httpx.Response(202)
+        )
+        result = await _call_registered_tool(
+            client,
+            "sovd_status_set",
+            {"entity_type": "components", "entity_id": "ecu", "action": "start"},
+        )
+        assert route.call_count == 1
+        assert json.loads(_tool_text(result)) == {}
+        await client.close()
