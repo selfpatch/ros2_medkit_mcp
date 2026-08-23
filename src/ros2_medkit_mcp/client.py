@@ -15,6 +15,7 @@ import re
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from contextvars import ContextVar
 from typing import Any
 from urllib.parse import quote
 
@@ -101,6 +102,19 @@ def _fault_query_params(
     if include_clusters:
         params["include_clusters"] = "true"
     return params
+
+
+# Status of the most recent generated-client response on this task. The generated
+# parsers build their error models inside the API function, so a documented error
+# status (400/404/500) carrying a non-JSON body - a proxy error page, say - raises
+# out of the call before the caller ever sees the response. This is how the status
+# survives that. A ContextVar rather than an attribute so concurrent tool calls do
+# not read each other's status.
+_last_response_status: ContextVar[int | None] = ContextVar("_last_response_status", default=None)
+
+
+async def _record_response_status(response: httpx.Response) -> None:
+    _last_response_status.set(response.status_code)
 
 
 def _error_from_content(status_code: int, content: bytes) -> str:
@@ -551,6 +565,8 @@ class SovdClient:
                 )
                 await self._medkit.__aenter__()
                 self._entered = True
+                hooks = self._medkit.http.get_async_httpx_client().event_hooks
+                hooks.setdefault("response", []).append(_record_response_status)
         return self._medkit
 
     async def _httpx_client(self) -> httpx.AsyncClient:
@@ -609,6 +625,7 @@ class SovdClient:
             kwargs["body"] = _wrap_body_dict(api_func, kwargs["body"])
         client = await self._ensure_client()
         detailed = sys.modules[api_func.__module__].asyncio_detailed
+        _last_response_status.set(None)
         try:
             response = await detailed(client=client.http, **kwargs)
             status = int(response.status_code)
@@ -625,6 +642,12 @@ class SovdClient:
         except httpx.RequestError as e:
             raise SovdClientError(message=f"Request failed: {e}") from e
         except (ValueError, KeyError) as e:
+            recorded = _last_response_status.get()
+            if recorded is not None and not 200 <= recorded < 300:
+                raise SovdClientError(
+                    message=(f"Gateway returned HTTP {recorded}: response body was not valid JSON"),
+                    status_code=recorded,
+                ) from e
             raise SovdClientError(message=f"Failed to parse response: {e}") from e
 
     async def _raw_request(self, method: str, path: str) -> Any:

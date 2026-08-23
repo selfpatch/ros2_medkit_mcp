@@ -633,6 +633,24 @@ class TestLifecycleTools:
         assert await client.set_status("apps", "motor", "shutdown") == {}
         await client.close()
 
+    @pytest.mark.parametrize("status", [400, 404, 500])
+    @respx.mock
+    async def test_set_status_keeps_status_when_error_body_is_not_json(
+        self, client: SovdClient, status: int
+    ) -> None:
+        # The generated parser builds its error model inside the API call, so a
+        # documented error status carrying a proxy's HTML page raises out of the
+        # call before the response is returned. The status must survive that:
+        # without it the caller cannot tell a rejected transition from a bug.
+        respx.put("http://test-sovd:8080/api/v1/apps/motor/status/shutdown").mock(
+            return_value=httpx.Response(status, html="<html>Bad Gateway</html>")
+        )
+        with pytest.raises(SovdClientError) as excinfo:
+            await client.set_status("apps", "motor", "shutdown")
+        assert excinfo.value.status_code == status
+        assert str(status) in str(excinfo.value)
+        await client.close()
+
     @pytest.mark.parametrize("status", [300, 302, 308])
     @respx.mock
     async def test_set_status_rejects_redirects(self, client: SovdClient, status: int) -> None:
