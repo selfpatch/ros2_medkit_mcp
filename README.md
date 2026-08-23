@@ -387,11 +387,11 @@ Reset all configurations (parameters) to their default values.
 Lifecycle status is only available for apps and components (not areas or functions).
 
 Reading the status needs no plugin - the gateway derives it from the ROS 2 graph and,
-for managed lifecycle nodes, from their reported state. Triggering a transition does: the
-gateway routes it to a `LifecycleProvider` plugin registered for that entity, and no
-provider ships with the gateway. A transition on a local app or component of a gateway
-with no provider therefore comes back as
-`501 [not-implemented] Lifecycle control not available for this entity`. An aggregating
+for managed lifecycle nodes, from their reported state. Triggering a transition does need
+one: the gateway routes it to a `LifecycleProvider` plugin registered for that entity, and
+no provider ships with the gateway. A transition on a local app or component of a gateway
+with no provider therefore gets HTTP `501` from the gateway, which this server surfaces as
+`[not-implemented] Lifecycle control not available for this entity`. An aggregating
 gateway forwards requests for remote entities to the peer that owns them, so a peer that
 does have a provider answers normally.
 
