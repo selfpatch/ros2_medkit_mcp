@@ -600,6 +600,10 @@ class SovdClient:
         success off `parsed is None` would report success on those errors - a
         silent false-success on destructive operations. Uses the ``_detailed``
         variant so the real status code is available; only 2xx is success.
+
+        A redirect counts as a failure, not a success: no endpoint documents a
+        3xx, redirects are not followed, and a proxy in front of the gateway
+        answering a destructive PUT with a 302 must not read as accepted.
         """
         if "body" in kwargs and isinstance(kwargs["body"], dict):
             kwargs["body"] = _wrap_body_dict(api_func, kwargs["body"])
@@ -608,7 +612,7 @@ class SovdClient:
         try:
             response = await detailed(client=client.http, **kwargs)
             status = int(response.status_code)
-            if status >= 400:
+            if not 200 <= status < 300:
                 raise SovdClientError(
                     message=_error_from_content(status, response.content),
                     status_code=status,

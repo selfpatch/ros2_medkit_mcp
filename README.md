@@ -386,10 +386,14 @@ Reset all configurations (parameters) to their default values.
 
 Lifecycle status is only available for apps and components (not areas or functions).
 
-Reading the status works on any gateway. Triggering a transition requires the gateway
-to have a `LifecycleProvider` plugin registered for the entity; there is no built-in
-provider, so on a stock gateway every `status_set` call fails with
-`501 [not-implemented] Lifecycle control not available for this entity`.
+Reading the status needs no plugin - the gateway derives it from the ROS 2 graph and,
+for managed lifecycle nodes, from their reported state. Triggering a transition does: the
+gateway routes it to a `LifecycleProvider` plugin registered for that entity, and no
+provider ships with the gateway. A transition on a local app or component of a gateway
+with no provider therefore comes back as
+`501 [not-implemented] Lifecycle control not available for this entity`. An aggregating
+gateway forwards requests for remote entities to the peer that owns them, so a peer that
+does have a provider answers normally.
 
 #### `ros2_medkit_status_get`
 Get the lifecycle status of an app or component (e.g. `ready` / `notReady`).
@@ -408,7 +412,7 @@ Trigger a lifecycle transition on an app or component via `PUT /{entity_type}/{e
 - `entity_id` (required, string): The entity identifier
 - `action` (required, string): one of `start`, `restart`, `force-restart`, `shutdown`, `force-shutdown`
 
-**Returns:** `{}` - the gateway accepts the transition with a body-less `202`, which the tool renders as an empty JSON object. Without a `LifecycleProvider` plugin the call returns the gateway error instead: `[not-implemented] Lifecycle control not available for this entity`.
+**Returns:** `{}` - the gateway accepts the transition with a body-less `202`, which the tool renders as an empty JSON object. With no provider registered for the entity the call returns the gateway error instead: `[not-implemented] Lifecycle control not available for this entity`.
 
 ## MCP Resources
 

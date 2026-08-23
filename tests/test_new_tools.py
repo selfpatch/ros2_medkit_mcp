@@ -577,7 +577,7 @@ class TestLifecycleTools:
         ).mock(return_value=httpx.Response(202))
         result = await client.set_status(entity_type, entity_id, action)
         assert result == {}
-        assert route.called
+        assert route.call_count == 1
         await client.close()
 
     @pytest.mark.parametrize("entity_type,entity_id", [("apps", "motor"), ("components", "ecu")])
@@ -593,19 +593,21 @@ class TestLifecycleTools:
         assert route.called
         await client.close()
 
+    @pytest.mark.parametrize("entity_type,entity_id", [("apps", "motor"), ("components", "ecu")])
     @pytest.mark.parametrize(
         "action",
         ["start", "restart", "force-restart", "shutdown", "force-shutdown"],
     )
     @respx.mock
     async def test_set_status_surfaces_missing_lifecycle_provider(
-        self, client: SovdClient, action: str
+        self, client: SovdClient, entity_type: str, entity_id: str, action: str
     ) -> None:
         # A gateway with no LifecycleProvider plugin answers every transition with
         # 501, a status the generated parser does not enumerate. Keying success off
         # a None parsed body would render that as an empty success object, so a
-        # destructive call would report as accepted while nothing happened.
-        respx.put(f"http://test-sovd:8080/api/v1/apps/motor/status/{action}").mock(
+        # destructive call would report as accepted while nothing happened. The
+        # message is asserted in full because the README quotes it verbatim.
+        respx.put(f"http://test-sovd:8080/api/v1/{entity_type}/{entity_id}/status/{action}").mock(
             return_value=httpx.Response(
                 501,
                 json={
@@ -615,9 +617,35 @@ class TestLifecycleTools:
             )
         )
         with pytest.raises(SovdClientError) as excinfo:
-            await client.set_status("apps", "motor", action)
+            await client.set_status(entity_type, entity_id, action)
         assert excinfo.value.status_code == 501
-        assert "not-implemented" in str(excinfo.value)
+        assert str(excinfo.value) == (
+            "[not-implemented] Lifecycle control not available for this entity"
+        )
+        await client.close()
+
+    @pytest.mark.parametrize("status", [200, 202, 204])
+    @respx.mock
+    async def test_set_status_accepts_any_2xx(self, client: SovdClient, status: int) -> None:
+        respx.put("http://test-sovd:8080/api/v1/apps/motor/status/shutdown").mock(
+            return_value=httpx.Response(status)
+        )
+        assert await client.set_status("apps", "motor", "shutdown") == {}
+        await client.close()
+
+    @pytest.mark.parametrize("status", [300, 302, 308])
+    @respx.mock
+    async def test_set_status_rejects_redirects(self, client: SovdClient, status: int) -> None:
+        # No endpoint documents a 3xx and redirects are not followed, so the parsed
+        # body is None just as it is for a body-less 202. A proxy in front of the
+        # gateway answering a destructive PUT with a redirect must not read as
+        # accepted.
+        respx.put("http://test-sovd:8080/api/v1/apps/motor/status/shutdown").mock(
+            return_value=httpx.Response(status, headers={"Location": "/elsewhere"})
+        )
+        with pytest.raises(SovdClientError) as excinfo:
+            await client.set_status("apps", "motor", "shutdown")
+        assert excinfo.value.status_code == status
         await client.close()
 
     async def test_set_status_invalid_entity_type(self, client: SovdClient) -> None:

@@ -6,7 +6,13 @@ import httpx
 import pytest
 import respx
 from mcp.server import Server
-from mcp.types import CallToolRequest, CallToolRequestParams, ListToolsRequest, TextContent
+from mcp.types import (
+    CallToolRequest,
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsRequest,
+    TextContent,
+)
 from pydantic import ValidationError
 
 from ros2_medkit_mcp.client import SovdClient, SovdClientError
@@ -356,8 +362,16 @@ class TestArgumentModels:
             StatusSetArgs(entity_type="apps", entity_id="motor", action="bogus")
 
 
-async def _call_registered_tool(client: SovdClient, name: str, arguments: dict[str, object]) -> str:
-    """Dispatch a tool through the registered MCP handler and return its text payload."""
+async def _call_registered_tool(
+    client: SovdClient, name: str, arguments: dict[str, object]
+) -> CallToolResult:
+    """Dispatch a tool through the registered MCP handler and return the full result.
+
+    The whole result is returned, not just its text, so callers can assert on
+    isError: an error the handler renders as a JSON envelope still reaches the
+    model as a non-error tool result, and a test that reads only the text cannot
+    tell the two apart.
+    """
     server: Server = Server("test")
     register_tools(server, client)
     request = CallToolRequest(
@@ -365,7 +379,13 @@ async def _call_registered_tool(client: SovdClient, name: str, arguments: dict[s
         params=CallToolRequestParams(name=name, arguments=arguments),
     )
     result = await server.request_handlers[CallToolRequest](request)
-    return str(result.root.content[0].text)
+    return result.root
+
+
+def _tool_text(result: CallToolResult) -> str:
+    content = result.content[0]
+    assert isinstance(content, TextContent)
+    return content.text
 
 
 class TestLifecycleToolDispatch:
@@ -386,10 +406,14 @@ class TestLifecycleToolDispatch:
 
         assert "ros2_medkit_status_get" in tools
         assert "ros2_medkit_status_set" in tools
-        assert tools["ros2_medkit_status_get"].inputSchema["properties"]["entity_type"]["enum"] == [
-            "apps",
-            "components",
+        assert tools["ros2_medkit_status_get"].inputSchema["required"] == [
+            "entity_type",
+            "entity_id",
         ]
+        for tool_name in ("ros2_medkit_status_get", "ros2_medkit_status_set"):
+            schema = tools[tool_name].inputSchema
+            assert schema["properties"]["entity_type"]["enum"] == ["apps", "components"]
+            assert schema["properties"]["entity_id"]["type"] == "string"
         assert tools["ros2_medkit_status_set"].inputSchema["properties"]["action"]["enum"] == [
             "start",
             "restart",
@@ -419,7 +443,10 @@ class TestLifecycleToolDispatch:
             for tool in listed.root.tools
             if tool.name == "ros2_medkit_status_set"
         )
-        assert "LifecycleProvider" in description
+        assert "Requires a gateway-side LifecycleProvider plugin for the entity" in description
+        assert "there is no built-in provider" in description
+        assert "not-implemented" in description
+        assert "status_get still" in description
         await client.close()
 
     @respx.mock
@@ -427,10 +454,11 @@ class TestLifecycleToolDispatch:
         respx.get("http://test-sovd:8080/api/v1/apps/motor/status").mock(
             return_value=httpx.Response(200, json={"status": "ready"})
         )
-        text = await _call_registered_tool(
+        result = await _call_registered_tool(
             client, "ros2_medkit_status_get", {"entity_type": "apps", "entity_id": "motor"}
         )
-        assert "ready" in text
+        assert result.isError is False
+        assert json.loads(_tool_text(result)) == {"status": "ready"}
         await client.close()
 
     @respx.mock
@@ -438,13 +466,15 @@ class TestLifecycleToolDispatch:
         route = respx.put("http://test-sovd:8080/api/v1/apps/motor/status/restart").mock(
             return_value=httpx.Response(202)
         )
-        text = await _call_registered_tool(
+        result = await _call_registered_tool(
             client,
             "ros2_medkit_status_set",
             {"entity_type": "apps", "entity_id": "motor", "action": "restart"},
         )
-        assert route.called
-        assert "error" not in json.loads(text)
+        assert route.call_count == 1
+        assert route.calls.last.request.read() == b""
+        assert result.isError is False
+        assert json.loads(_tool_text(result)) == {}
         await client.close()
 
     @respx.mock
@@ -458,15 +488,16 @@ class TestLifecycleToolDispatch:
                 },
             )
         )
-        payload = json.loads(
-            await _call_registered_tool(
-                client,
-                "ros2_medkit_status_set",
-                {"entity_type": "apps", "entity_id": "motor", "action": "shutdown"},
-            )
+        result = await _call_registered_tool(
+            client,
+            "ros2_medkit_status_set",
+            {"entity_type": "apps", "entity_id": "motor", "action": "shutdown"},
         )
-        assert payload["success"] is False
-        assert "not-implemented" in payload["error"]
+        assert json.loads(_tool_text(result)) == {
+            "success": False,
+            "data": None,
+            "error": "[not-implemented] Lifecycle control not available for this entity",
+        }
         await client.close()
 
     @respx.mock
@@ -474,10 +505,11 @@ class TestLifecycleToolDispatch:
         route = respx.put("http://test-sovd:8080/api/v1/components/ecu/status/start").mock(
             return_value=httpx.Response(202)
         )
-        await _call_registered_tool(
+        result = await _call_registered_tool(
             client,
             "sovd_status_set",
             {"entity_type": "components", "entity_id": "ecu", "action": "start"},
         )
-        assert route.called
+        assert route.call_count == 1
+        assert json.loads(_tool_text(result)) == {}
         await client.close()
