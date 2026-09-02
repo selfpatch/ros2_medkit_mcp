@@ -1,5 +1,7 @@
 """Tests for new MCP tools (v0.2.0-v0.4.0 features)."""
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -236,6 +238,77 @@ class TestScriptsTools:
         await client.close()
 
     @respx.mock
+    async def test_execute_script_sends_the_script_inputs_under_parameters(
+        self, client: SovdClient
+    ) -> None:
+        # The gateway reads the script's own inputs from `parameters` and refuses a
+        # body without `execution_type`, so what the wire carries is the whole point
+        # here - a 202 alone would pass on either shape.
+        route = respx.post(
+            "http://test-sovd:8080/api/v1/components/motor/scripts/s1/executions"
+        ).mock(return_value=httpx.Response(202, json=self.SCRIPT_EXECUTION))
+        await client.execute_script("motor", "s1", {"iterations": 3})
+        assert json.loads(route.calls.last.request.content) == {
+            "execution_type": "now",
+            "parameters": {"iterations": 3},
+        }
+        await client.close()
+
+    @respx.mock
+    async def test_execute_script_forwards_a_provider_execution_type(
+        self, client: SovdClient
+    ) -> None:
+        # A ScriptProvider plugin defines its own vocabulary, so the caller has to be
+        # able to name a value other than the built-in backend's only one.
+        route = respx.post("http://test-sovd:8080/api/v1/apps/talker/scripts/s1/executions").mock(
+            return_value=httpx.Response(202, json=self.SCRIPT_EXECUTION)
+        )
+        await client.execute_script(
+            "talker", "s1", None, entity_type="apps", execution_type="scheduled"
+        )
+        assert json.loads(route.calls.last.request.content) == {"execution_type": "scheduled"}
+        await client.close()
+
+    @respx.mock
+    async def test_execute_script_forwards_an_execution_type_alongside_parameters(
+        self, client: SovdClient
+    ) -> None:
+        # The two fields are independent, and a body built as though they were - the
+        # caller's type honoured only when no parameters came with it - satisfies
+        # every other case here.
+        route = respx.post("http://test-sovd:8080/api/v1/apps/talker/scripts/s1/executions").mock(
+            return_value=httpx.Response(202, json=self.SCRIPT_EXECUTION)
+        )
+        await client.execute_script(
+            "talker",
+            "s1",
+            {"iterations": 3},
+            entity_type="apps",
+            execution_type="scheduled",
+        )
+        assert json.loads(route.calls.last.request.content) == {
+            "execution_type": "scheduled",
+            "parameters": {"iterations": 3},
+        }
+        await client.close()
+
+    @respx.mock
+    async def test_execute_script_keeps_an_explicitly_empty_parameters_object(
+        self, client: SovdClient
+    ) -> None:
+        # `parameters` reaches the provider untouched, so an empty object is a
+        # different request from an absent one and only the caller knows which.
+        route = respx.post(
+            "http://test-sovd:8080/api/v1/components/motor/scripts/s1/executions"
+        ).mock(return_value=httpx.Response(202, json=self.SCRIPT_EXECUTION))
+        await client.execute_script("motor", "s1", {})
+        assert json.loads(route.calls.last.request.content) == {
+            "execution_type": "now",
+            "parameters": {},
+        }
+        await client.close()
+
+    @respx.mock
     async def test_get_script_execution(self, client: SovdClient) -> None:
         respx.get(
             "http://test-sovd:8080/api/v1/components/motor/scripts/s1/executions/exec-1"
@@ -450,7 +523,7 @@ class TestUpdatesTools:
             return_value=httpx.Response(201, json=self.UPDATE_RESPONSE)
         )
         result = await client.register_update(
-            {"name": "firmware-v2", "version": "2.0.0", "uri": "https://example.com/fw.bin"}
+            {"id": "upd-1", "version": "2.0.0", "uri": "https://example.com/fw.bin"}
         )
         assert result["id"] == "upd-1"
         assert result["status"] == "pending"
@@ -571,7 +644,7 @@ class TestLifecycleTools:
         self, client: SovdClient, entity_type: str, entity_id: str, action: str
     ) -> None:
         # The action segment stays hyphenated on the wire even though the generated
-        # module name uses an underscore (put_apps_status_force_restart).
+        # module name uses an underscore (put_app_status_force_restart).
         route = respx.put(
             f"http://test-sovd:8080/api/v1/{entity_type}/{entity_id}/status/{action}"
         ).mock(return_value=httpx.Response(202))
@@ -688,49 +761,94 @@ class TestLifecycleTools:
 
 
 class TestDataDiscoveryTools:
-    """Tests for data discovery tools (categories and groups)."""
+    """Tests for data discovery tools (categories and groups).
+
+    The gateway answers 501 on both resources for every entity type - the ROS 2
+    data provider does not group or categorise its topics - so 501 is the only
+    status these tools see in production. A ScriptProvider-style plugin backend
+    may implement them, which is why the tools stay in the set; until one does,
+    what matters is that the gateway's reason reaches the caller intact rather
+    than being flattened into an unexpected-status.
+    """
+
+    NOT_IMPLEMENTED = {
+        "error_code": "not-implemented",
+        "message": "Data categories are not implemented for ROS 2",
+        "parameters": {"feature": "data-categories"},
+    }
 
     @respx.mock
-    async def test_list_data_categories(self, client: SovdClient) -> None:
+    async def test_list_data_categories_reports_not_implemented(self, client: SovdClient) -> None:
         respx.get("http://test-sovd:8080/api/v1/components/motor/data-categories").mock(
-            return_value=httpx.Response(
-                200,
-                json={"items": ["topics", "parameters"]},
-            )
+            return_value=httpx.Response(501, json=self.NOT_IMPLEMENTED)
         )
-        result = await client.list_data_categories("motor")
-        assert result == ["topics", "parameters"]
+        with pytest.raises(SovdClientError) as excinfo:
+            await client.list_data_categories("motor")
+        assert "not-implemented" in str(excinfo.value)
+        assert "not implemented for ROS 2" in str(excinfo.value)
         await client.close()
 
     @respx.mock
-    async def test_list_data_categories_apps(self, client: SovdClient) -> None:
+    async def test_list_data_categories_apps_reports_not_implemented(
+        self, client: SovdClient
+    ) -> None:
         respx.get("http://test-sovd:8080/api/v1/apps/my_node/data-categories").mock(
-            return_value=httpx.Response(200, json={"items": ["topics"]})
+            return_value=httpx.Response(501, json=self.NOT_IMPLEMENTED)
         )
-        result = await client.list_data_categories("my_node", "apps")
-        assert result == ["topics"]
+        with pytest.raises(SovdClientError) as excinfo:
+            await client.list_data_categories("my_node", "apps")
+        assert "not-implemented" in str(excinfo.value)
         await client.close()
 
     @respx.mock
-    async def test_list_data_groups(self, client: SovdClient) -> None:
+    async def test_list_data_groups_reports_not_implemented(self, client: SovdClient) -> None:
         respx.get("http://test-sovd:8080/api/v1/components/motor/data-groups").mock(
             return_value=httpx.Response(
-                200,
-                json={"items": [{"id": "sensor_data", "name": "Sensor Data"}]},
+                501,
+                json={
+                    "error_code": "not-implemented",
+                    "message": "Data groups are not implemented for ROS 2",
+                    "parameters": {"feature": "data-groups"},
+                },
             )
         )
-        result = await client.list_data_groups("motor")
-        assert len(result) == 1
-        assert result[0]["id"] == "sensor_data"
+        with pytest.raises(SovdClientError) as excinfo:
+            await client.list_data_groups("motor")
+        assert "Data groups are not implemented" in str(excinfo.value)
         await client.close()
 
     @respx.mock
-    async def test_list_data_groups_apps(self, client: SovdClient) -> None:
+    async def test_list_data_groups_apps_reports_not_implemented(self, client: SovdClient) -> None:
         respx.get("http://test-sovd:8080/api/v1/apps/my_node/data-groups").mock(
-            return_value=httpx.Response(200, json={"items": []})
+            return_value=httpx.Response(
+                501,
+                json={
+                    "error_code": "not-implemented",
+                    "message": "Data groups are not implemented for ROS 2",
+                    "parameters": {"feature": "data-groups"},
+                },
+            )
         )
-        result = await client.list_data_groups("my_node", "apps")
-        assert result == []
+        with pytest.raises(SovdClientError) as excinfo:
+            await client.list_data_groups("my_node", "apps")
+        assert "not-implemented" in str(excinfo.value)
+        await client.close()
+
+    @respx.mock
+    async def test_list_data_categories_cannot_yet_read_a_backend_that_answers_200(
+        self, client: SovdClient
+    ) -> None:
+        # The route documents no 200, so the generated parser hands back no model and
+        # the wrapper reports unexpected-status. A provider plugin that implements the
+        # resource would hit exactly this, which is a gateway schema gap rather than a
+        # client one. Pinned so that adding a 200 to the schema fails here and someone
+        # revisits it, instead of the tool silently changing what it returns.
+        respx.get("http://test-sovd:8080/api/v1/components/motor/data-categories").mock(
+            return_value=httpx.Response(200, json={"items": ["topics", "parameters"]})
+        )
+        with pytest.raises(SovdClientError) as excinfo:
+            await client.list_data_categories("motor")
+        assert "unexpected-status" in str(excinfo.value)
         await client.close()
 
 
@@ -918,14 +1036,18 @@ class TestDispatchSmoke:
 
     @respx.mock
     async def test_data_discovery_dispatch_smoke(self, client: SovdClient) -> None:
+        # Dispatch reaches the right route and carries the gateway's own reason out;
+        # the ROS 2 backend implements neither resource, so 501 is what it answers.
         respx.get("http://test-sovd:8080/api/v1/components/motor/data-categories").mock(
             return_value=httpx.Response(
-                200,
-                json={"items": ["topics", "parameters"]},
+                501,
+                json={
+                    "error_code": "not-implemented",
+                    "message": "Data categories are not implemented for ROS 2",
+                },
             )
         )
-        result = await client.list_data_categories("motor")
-        formatted = format_json_response(result)
-        assert "topics" in formatted[0].text
-        assert "parameters" in formatted[0].text
+        with pytest.raises(SovdClientError) as excinfo:
+            await client.list_data_categories("motor")
+        assert "Data categories are not implemented" in str(excinfo.value)
         await client.close()

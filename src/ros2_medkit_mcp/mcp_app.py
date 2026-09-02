@@ -2071,13 +2071,26 @@ def register_tools(
                         },
                         "params": {
                             "type": "object",
-                            "description": "Optional parameters to pass to the script execution",
+                            "description": (
+                                "Optional parameters for the script, forwarded to the provider"
+                                " untouched. The accepted shape is the script's own, from"
+                                " parameters_schema on the script."
+                            ),
                         },
                         "entity_type": {
                             "type": "string",
                             "enum": ["components", "apps"],
                             "description": "Entity type",
                             "default": "components",
+                        },
+                        "execution_type": {
+                            "type": "string",
+                            "description": (
+                                "When to run. The built-in script backend accepts only 'now'; a"
+                                " provider plugin defines its own vocabulary and answers 400 for a"
+                                " value it does not support."
+                            ),
+                            "default": "now",
                         },
                     },
                     "required": ["entity_id", "script_id"],
@@ -2485,8 +2498,10 @@ def register_tools(
                         "update_config": {
                             "type": "object",
                             "description": (
-                                "Update package configuration"
-                                " (e.g., {'name': 'firmware-v2', 'version': '2.0.0',"
+                                "Update package configuration. 'id' is required and becomes"
+                                " the update's path segment; every other key is forwarded to"
+                                " the update backend unchanged"
+                                " (e.g., {'id': 'firmware-v2', 'version': '2.0.0',"
                                 " 'uri': 'https://...'})"
                             ),
                         },
@@ -3076,7 +3091,11 @@ def register_tools(
             elif normalized_name == "ros2_medkit_execute_script":
                 args = ExecuteScriptArgs(**arguments)
                 result = await client.execute_script(
-                    args.entity_id, args.script_id, args.params, args.entity_type
+                    args.entity_id,
+                    args.script_id,
+                    args.params,
+                    args.entity_type,
+                    args.execution_type,
                 )
                 return format_json_response(result)
 

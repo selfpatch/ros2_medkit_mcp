@@ -477,28 +477,28 @@ _ENTITY_FUNC_MAP: dict[str, dict[str, dict[str, Any]]] = {
     # force-shutdown); the generated modules use underscores.
     "lifecycle": {
         "get": {
-            "components": lifecycle.get_components_status,
-            "apps": lifecycle.get_apps_status,
+            "components": lifecycle.get_component_status,
+            "apps": lifecycle.get_app_status,
         },
         "start": {
-            "components": lifecycle.put_components_status_start,
-            "apps": lifecycle.put_apps_status_start,
+            "components": lifecycle.put_component_status_start,
+            "apps": lifecycle.put_app_status_start,
         },
         "restart": {
-            "components": lifecycle.put_components_status_restart,
-            "apps": lifecycle.put_apps_status_restart,
+            "components": lifecycle.put_component_status_restart,
+            "apps": lifecycle.put_app_status_restart,
         },
         "force-restart": {
-            "components": lifecycle.put_components_status_force_restart,
-            "apps": lifecycle.put_apps_status_force_restart,
+            "components": lifecycle.put_component_status_force_restart,
+            "apps": lifecycle.put_app_status_force_restart,
         },
         "shutdown": {
-            "components": lifecycle.put_components_status_shutdown,
-            "apps": lifecycle.put_apps_status_shutdown,
+            "components": lifecycle.put_component_status_shutdown,
+            "apps": lifecycle.put_app_status_shutdown,
         },
         "force-shutdown": {
-            "components": lifecycle.put_components_status_force_shutdown,
-            "apps": lifecycle.put_apps_status_force_shutdown,
+            "components": lifecycle.put_component_status_force_shutdown,
+            "apps": lifecycle.put_app_status_force_shutdown,
         },
     },
 }
@@ -1269,12 +1269,25 @@ class SovdClient:
         script_id: str,
         params: dict[str, Any] | None = None,
         entity_type: str = "components",
+        execution_type: str = "now",
     ) -> dict[str, Any]:
+        # The request body is ScriptExecutionRequest: `execution_type` says when to
+        # run and the script's own inputs live under `parameters`. The shipped
+        # backend accepts only `now`, which is why it defaults, but a ScriptProvider
+        # plugin defines its own vocabulary and answers 400 for a value it does not
+        # know, so the caller can name one.
+        #
+        # `is not None` rather than a truth test: `parameters` is forwarded to the
+        # provider untouched, so an explicitly empty object is a different request
+        # from an absent one and only the caller knows which they meant.
+        body: dict[str, Any] = {"execution_type": execution_type}
+        if params is not None:
+            body["parameters"] = params
         fn = _entity_func("scripts", "execute", entity_type)
         kwargs: dict[str, Any] = {
             _entity_id_kwarg(entity_type): entity_id,
             "script_id": script_id,
-            "body": params if params else {},
+            "body": body,
         }
         return await self._call(fn, **kwargs)
 

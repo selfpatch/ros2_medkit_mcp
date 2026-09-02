@@ -1009,11 +1009,21 @@ class ExecuteScriptArgs(BaseModel):
     script_id: str = Field(..., description="The script identifier")
     params: dict[str, Any] | None = Field(
         default=None,
-        description="Optional parameters to pass to the script execution",
+        description=(
+            "Optional parameters for the script, forwarded to the provider untouched. "
+            "The accepted shape is the script's own, from parameters_schema on the script."
+        ),
     )
     entity_type: str = Field(
         default="components",
         description="Entity type: 'components' or 'apps'",
+    )
+    execution_type: str = Field(
+        default="now",
+        description=(
+            "When to run. The built-in script backend accepts only 'now'; a provider "
+            "plugin defines its own vocabulary and answers 400 for a value it does not support."
+        ),
     )
 
 
